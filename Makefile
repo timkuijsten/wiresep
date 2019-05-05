@@ -59,7 +59,7 @@ gv:
 	dot -Tsvg doc/processdesign.gv -o doc/processdesign.svg
 
 clean:
-	rm -f y.tab.c *.o *.core wiresep wiresep-keygen
+	rm -f y.tab.c *.o *.core *.html wiresep wiresep-keygen
 
 tags: *.[ch]
 	ctags *.[ch]
