@@ -1,0 +1,188 @@
+.\" Copyright (c) 2019 Tim Kuijsten
+.\"
+.\" Permission to use, copy, modify, and/or distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: April 27 2019 $
+.Dt WIRESEP.CONF 5
+.Os
+.Sh NAME
+.Nm wiresep.conf
+.Nd WireSep configuration file
+.Sh DESCRIPTION
+.Nm
+is the configuration file used by
+.Xr wiresep 8 .
+The file consists of global settings, interface specific settings and peer
+specific settings.
+All global settings can be overridden per interface and some global and
+interface specific settings can be overridden per peer.
+.Ss GLOBAL SETTINGS
+The following global settings are recognized:
+.Bl -tag -width Ds
+.It Ic user Ar name
+Set the user as which to run
+.Xr wiresep 8 .
+.Ar name
+must be either the name of an existing user in the
+.Xr passwd 5
+database.
+Or an id in the range of 1 to 65535.
+If a name is specified the primary group of this user will be used as the group
+of the process.
+If an id is specified for
+.Ar name
+then the group of the process will be set to the same id.
+.It Ic group Ar name
+Set the group as which to run
+.Xr wiresep 8 .
+.Ar name
+must be either the name of an existing group from the
+.Xr group 5
+database or an id in the range of 1 to 65535.
+.It Ic log facility Ar facility
+Set the log facility as used by
+.Xr syslog 3 .
+.Ar facility
+must be one of auth, authpriv, cron, daemon, ftp, kern, lpr, mail, news, user,
+uucp or local0 through local7.
+.It Ic psk Ar key
+A default pre-shared key to use for communication on all interfaces with all
+peers.
+.Ar key
+must be encoded in Base64.
+.It Ic interface Ar name Brq ...
+The name of an interface.
+.Ar name
+must start with
+.Dq tun
+followed by a number.
+The named interface must exist in
+.Pa /dev
+and can be created with
+.Xr MAKEDEV 8 .
+See the section about interface specific settings for what can be contained in
+the block.
+.El
+.Ss INTERFACE SPECIFIC SETTINGS
+The following interface specific settings are recognized:
+.Bl -tag -width Ds
+.It Ic desc Ar text
+A descriptive
+.Ar text
+for the interface as showed by
+.Xr ifconfig 8 .
+If not set it defaults to the public key of the interface.
+.It Ic ifaddr Ar ip/mask
+The ip address and mask of the interface.
+This setting is required since configuration via
+.Xr hostname.if 5
+is not yet supported.
+.It Ic listen Ar ip:port Op ...
+The ip address and port on which to listen for encrypted incoming packets.
+Multiple address and port combinations may be configured.
+This setting is required.
+.It Ic privkey Ar key
+The private key of this interface.
+.It Ic pubkey Ar key
+The public key accompanying
+.Ar privkey .
+.It Ic peer Oo Ar name Oc Brq ...
+A peer with an optional
+.Ar name
+followed by a required block containing peer specific settings.
+.Ar name
+is used in the logs.
+If it is not set the first eight characters of the peers public key are used.
+See the section about peer specific settings for what can be contained in the
+block.
+.El
+.Pp
+Note that all global settings can be used within an interface block to override
+the global setting.
+.Ss PEER SPECIFIC SETTINGS
+The following peer specific settings are recognized:
+.Bl -tag -width Ds
+.It Ic allowedips Ar ip/mask Op ...
+The ip addresses that this peer is allowed to use as a source address.
+.Ar 0.0.0.0/0
+means any IPv4 address.
+.Ar ::/0
+means any IPv6 address.
+.Ar *
+is a shorthand for
+.Ar ::/0 0.0.0.0/0 .
+This setting is required.
+.It Ic endpoint Ar ip:port
+A known endpoint for this peer.
+.It Ic psk Ar key
+A pre-shared key to use for communication with this peer.
+Overrides any global or interface specific
+.Ar psk .
+The
+.Ar key
+must be encoded in Base64.
+.It Ic pubkey Ar key
+The peers public key.
+This setting is required.
+.El
+.Sh EXAMPLES
+A config file that uses the tun5 device with an internal ip address of
+172.16.0.1 and allows communication with the peer Jane and Joe.
+Jane is allowed to use any source ip, while Joe may only use 172.16.0.25 as the
+source ip of his packets.
+Furthermore, with Joe a pre-shared key is used for additional encryption.
+.Bd -literal -offset indent
+user 1109
+
+interface tun5 {
+	ifaddr 172.16.0.1/24
+	listen 198.51.100.7:1234
+
+	privkey f5tK/SyL1G599SrSLPlul0Z4DFgqMglUrebRH7hSAZs=
+	pubkey ErOyQKEbYQx/nFSiCFY+lDCe/3LfJ/v8UiHFpnvpo3Q=
+
+	# override global uid
+	user 1200
+
+	peer jane {
+		pubkey BhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
+		allowedips *
+	}
+
+	peer joe {
+		pubkey AhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
+		allowedips 172.16.0.25
+
+		# peer specific psk
+		psk 20ZFmc8j/izlCP6sNXhZKKU0RS4U3Gv/3jBg4GGz9hM=
+	}
+}
+.Ed
+.Pp
+In order to let
+.Xr wiresep 8
+create the tun5 device, it must exist in the
+.Pa /dev
+tree.
+This can be done as follows:
+.Bd -literal -offset indent
+	cd /dev
+	doas ./MAKEDEV tun5
+.Ed
+.Sh SEE ALSO
+.Xr wiresep-keygen 1 ,
+.Xr MAKEDEV 8 ,
+.Xr wiresep 8
+.Sh AUTHORS
+.An -nosplit
+.An Tim Kuijsten

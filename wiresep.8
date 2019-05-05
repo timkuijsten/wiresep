@@ -1,0 +1,61 @@
+.\" Copyright (c) 2019 Tim Kuijsten
+.\"
+.\" Permission to use, copy, modify, and/or distribute this software for any
+.\" purpose with or without fee is hereby granted, provided that the above
+.\" copyright notice and this permission notice appear in all copies.
+.\"
+.\" THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES
+.\" WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+.\" MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR
+.\" ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+.\" WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+.\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
+.\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+.\"
+.Dd $Mdocdate: May 4 2019 $
+.Dt WIRESEP 8
+.Os
+.Sh NAME
+.Nm wiresep
+.Nd A privilege separated implementation of WireGuard
+.Sh SYNOPSIS
+.Nm
+.Op Fl dnqv
+.Op Fl f Ar file
+.Sh DESCRIPTION
+The
+.Nm
+daemon runs WireGuard on one or more tunnel interfaces.
+.Pp
+It's arguments are as follows.
+.Bl -tag -width Ds
+.It Fl d
+Do not daemonize but stay in foreground.
+.It Fl f Ar file
+Use
+.Ar file
+as the configuration file instead of the default.
+.It Fl n
+Config test mode.
+No output is shown if there are no errors.
+.It Fl q
+Be quiet.
+This flag may be specified multiple times.
+.It Fl v
+Be verbose.
+This flag may be specified multiple times.
+.El
+.Sh FILES
+.Pa /etc/wiresep.conf
+The default configuration file used by
+.Nm .
+.Sh EXIT STATUS
+The
+.Nm
+daemon exits 0 after receiving a TERM signal, or >0 if an error occurs.
+.Sh SEE ALSO
+.Xr wiresep-keygen 1 ,
+.Xr wiresep.conf 5
+.Sh AUTHORS
+.An -nosplit
+.An Tim Kuijsten

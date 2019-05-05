@@ -1,0 +1,25 @@
+digraph G {
+
+	usock [label="unconnected\nsocket"]
+	usock -> PROXY [ label="WGINIT\lWGRESP\lWGCOOKIE\lWGDATA\l" ]
+
+	csock [label="peer\nconnected\nsocket"]
+	csock -> IFN [ label="WGINIT\lWGRESP\lWGCOOKIE\lWGDATA\l" ]
+
+	PROXY [shape=record, label="{\N | pledge stdio | bind(2) | ifn mac1 key | ifn cookie key}"]
+	PROXY -> usock [ label = "WGCOOKIE" ]
+	PROXY -> IFN [ label = "α WGDATA\l" ]
+	PROXY -> ENCLAVE [ label = "α WGINIT\lα WGRESP\l" ]
+
+	ENCLAVE [shape=record, label="{\N | pledge stdio | ifn private and\npre-sharedkeys | peer static\npublic keys}"]
+	ENCLAVE -> IFN [ label = "β WGINIT\lβ WGRESP\lβ CONNREQ\lβ SESSKEYS\l" ]
+
+	IFN [shape=record, label="{\N | pledge stdio inet | /dev/tun | mac1 key | cookie key | peer transport keys | peer connect(2) | peer timers}"]
+	IFN -> csock [ label = "WGINIT\lWGRESP\lWGCOOKIE\lWGDATA\l" ]
+	IFN -> ENCLAVE [ label = "β REQWGINIT\lβ WGINIT\lβ WGRESP\l" ]
+	IFN -> PROXY [ label = "β SESSID\l" ]
+
+        labelloc = b
+	labeljust = l
+	label = "Version 0.5\l2019-01-27\l"
+}
