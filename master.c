@@ -1286,40 +1286,21 @@ parseconfig(const char *filename)
 void
 processconfig(void)
 {
-	struct iovec iov[2];
 	struct peer *peer;
 	size_t n, m;
 
 	for (n = 0; n < ifnvsize; n++) {
-		/* Hash(Label-Mac1 || Spubm) */
+		if (ws_calcmac1key(ifnv[n]->mac1key, ifnv[n]->pubkey) == -1)
+			errx(1, "ws_calcmac1key %zu", n);
 
-		iov[0].iov_base = LABELMAC1;
-		iov[0].iov_len = strlen(LABELMAC1);
-		iov[1].iov_base = ifnv[n]->pubkey;
-		iov[1].iov_len = sizeof(ifnv[n]->pubkey);
-
-		ws_hash(ifnv[n]->mac1key, iov, 2);
-
-		/* Hash(Hash(Hash(Construction) || Identifier) || Spubm) */
-
-		if (readhexnomem(ifnv[n]->pubkeyhash,
-		    sizeof(ifnv[n]->pubkeyhash), CONSIDHASH,
-		    strlen(CONSIDHASH)) == -1)
-			abort();
-		iov[0].iov_base = ifnv[n]->pubkeyhash;
-		iov[0].iov_len = sizeof(ifnv[n]->pubkeyhash);
-		iov[1].iov_base = ifnv[n]->pubkey;
-		iov[1].iov_len = sizeof(ifnv[n]->pubkey);
-		ws_hash(ifnv[n]->pubkeyhash, iov, 2);
+		if (ws_calcpubkeyhash(ifnv[n]->pubkeyhash, ifnv[n]->pubkey)
+		    == -1)
+			errx(1, "ws_calcpubkeyhash %zu", n);
 
 		for (m = 0; m < ifnv[n]->peerssize; m++) {
 			peer = ifnv[n]->peers[m];
-			iov[0].iov_base = LABELMAC1;
-			iov[0].iov_len = strlen(LABELMAC1);
-			iov[1].iov_base = peer->pubkey;
-			iov[1].iov_len = sizeof(peer->pubkey);
-
-			ws_hash(peer->mac1key, iov, 2);
+			if (ws_calcmac1key(peer->mac1key, peer->pubkey) == -1)
+				errx(1, "ws_calcmac1key %zu %zu", n, m);
 		}
 	}
 }
