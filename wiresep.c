@@ -18,6 +18,7 @@
 #include <string.h>
 
 #include "blake2.h"
+#include "util.h"
 #include "wiresep.h"
 
 /*
@@ -84,6 +85,9 @@ ws_hash(wshash out, const struct iovec *iov, size_t iovlen)
 		abort();
 }
 
+/*
+ * Print key.
+ */
 void
 wspk(FILE *fp, const char *pre, wskey key)
 {
@@ -94,4 +98,48 @@ wspk(FILE *fp, const char *pre, wskey key)
 	for (n = 0; n < sizeof(wskey); n++)
 		fprintf(fp, "%02x ", key[n]);
 	fprintf(fp, "\n");
+}
+
+/*
+ * Calculate the mac1 key.
+ *
+ * Hash(Label-Mac1 || Spubm)
+ */
+int
+ws_calcmac1key(wskey mac1key, const wskey pubkey)
+{
+	struct iovec iov[2];
+
+	iov[0].iov_base = LABELMAC1;
+	iov[0].iov_len = strlen(LABELMAC1);
+	iov[1].iov_base = (void *)pubkey;
+	iov[1].iov_len = KEYLEN;
+
+	ws_hash(mac1key, iov, 2);
+
+	return 0;
+}
+
+/*
+ * Calculate the hash of a public key.
+ *
+ * Hash(Hash(Hash(Construction) || Identifier) || Spubm)
+ */
+int
+ws_calcpubkeyhash(wshash pubkeyhash, const wskey pubkey)
+{
+	struct iovec iov[2];
+
+	if (readhexnomem(pubkeyhash, HASHLEN, CONSIDHASH, strlen(CONSIDHASH))
+	    == -1)
+		return -1;
+
+	iov[0].iov_base = pubkeyhash;
+	iov[0].iov_len = HASHLEN;
+	iov[1].iov_base = (void *)pubkey;
+	iov[1].iov_len = KEYLEN;
+
+	ws_hash(pubkeyhash, iov, 2);
+
+	return 0;
 }

@@ -51,5 +51,7 @@ int ws_aead(uint8_t *, size_t *, const uint8_t *, size_t, const wskey,
     uint64_t, const uint8_t *, size_t, int);
 void ws_hash(wshash, const struct iovec *, size_t);
 void wspk(FILE *, const char *, wskey);
+int ws_calcmac1key(wskey, const wskey);
+int ws_calcpubkeyhash(wshash, const wskey);
 
 #endif /* WIRESEP_H */
