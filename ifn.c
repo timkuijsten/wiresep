@@ -934,7 +934,7 @@ sessnew(struct peer *peer, char initiator)
  * Return 0 on success, -1 on error.
  */
 static int
-notififyproxy(uint32_t peerid, uint32_t sessid, enum sessidtype type)
+notifyproxy(uint32_t peerid, uint32_t sessid, enum sessidtype type)
 {
 	struct msgsessid msi;
 
@@ -983,7 +983,7 @@ sessdestroy(struct session *sess)
 	/*
 	 * Notify the proxy that this id is no longer valid.
 	 */
-	if (notififyproxy(peerid, sessid, SESSIDDESTROY) == -1)
+	if (notifyproxy(peerid, sessid, SESSIDDESTROY) == -1)
 		if (verbose > -1)
 			logwarnx("could not notify proxy of destroyed session "
 			    "id");
@@ -1074,7 +1074,7 @@ maketentcurr(struct peer *peer)
 	peer->scurr = peer->stent;
 	peer->stent = NULL;
 
-	if (notififyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
+	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
 		if (verbose > -1)
 			logwarnx("%s: could not notify proxy", __func__);
 }
@@ -1093,7 +1093,7 @@ makenextcurr(struct peer *peer)
 	peer->scurr = peer->snext;
 	peer->snext = NULL;
 
-	if (notififyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
+	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
 		if (verbose > -1)
 			logwarnx("%s: could not notify proxy", __func__);
 }
@@ -1525,7 +1525,7 @@ handleenclavemsg(void)
 			sess->id = le32toh(mwi->sender);
 			sess->lastsent = now;
 
-			if (notififyproxy(p->id, sess->id, SESSIDTENT) == -1)
+			if (notifyproxy(p->id, sess->id, SESSIDTENT) == -1)
 				if (verbose > -1)
 					logwarnx("could not notify proxy of tent "
 					    "session id");
@@ -1574,7 +1574,7 @@ handleenclavemsg(void)
 		p->snext = sessnew(p, 0);
 		p->snext->id = le32toh(mwr->sender);
 
-		if (notififyproxy(p->id, p->snext->id, SESSIDNEXT) == -1)
+		if (notifyproxy(p->id, p->snext->id, SESSIDNEXT) == -1)
 			if (verbose > -1)
 				logwarnx("could not notify proxy of next session "
 				    "id");
