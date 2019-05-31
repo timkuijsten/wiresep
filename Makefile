@@ -14,9 +14,10 @@ MANDIR	= $(PREFIX)/man
 all: wiresep wiresep-keygen
 
 wiresep: tai64n.o blake2s-ref.o wireprot.o wiresep.o util.o enclave.o proxy.o \
-    ifn.o scfg.o base64.o master.c
+    ifn.o scfg.o base64.o parseconfig.o master.c
 	${CC} ${CFLAGS} -lcrypto tai64n.o blake2s-ref.o wiresep.o wireprot.o \
-	    util.o enclave.o proxy.o ifn.o base64.o scfg.o master.c -o $@
+	    util.o enclave.o proxy.o ifn.o base64.o scfg.o parseconfig.o \
+	    master.c -o $@
 
 wiresep-keygen: base64.o wiresep-keygen.c
 	${CC} ${CFLAGS} -lcrypto base64.o wiresep-keygen.c -o $@
@@ -29,6 +30,9 @@ base64.o: base64.c base64.h
 
 wiresep.o: wiresep.c wiresep.h
 	${CC} ${CFLAGS} -c wiresep.c
+
+parseconfig.o: parseconfig.c parseconfig.h
+	${CC} ${CFLAGS} -c parseconfig.c
 
 util.o: util.c util.h
 	${CC} ${CFLAGS} -c util.c
