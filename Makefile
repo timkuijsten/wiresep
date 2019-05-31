@@ -62,8 +62,14 @@ gv:
 	dot -Tpng doc/processdesign.gv -o doc/processdesign.png
 	dot -Tsvg doc/processdesign.gv -o doc/processdesign.svg
 
+# run make CFLAGS="-pg -DPROFIL" testproxy
+testproxy: tai64n.o blake2s-ref.o wireprot.o wiresep.o util.o scfg.o base64.o \
+    parseconfig.o proxy.c test/testproxy.c
+	${CC} ${CFLAGS} -lcrypto tai64n.o blake2s-ref.o wiresep.o wireprot.o \
+	    util.o base64.o scfg.o parseconfig.o test/testproxy.c -o $@
+
 clean:
-	rm -f y.tab.c *.o *.core *.html wiresep wiresep-keygen
+	rm -f y.tab.c *.o *.core *.html wiresep wiresep-keygen testproxy
 
 tags: *.[ch]
 	ctags *.[ch]
