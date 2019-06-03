@@ -50,7 +50,7 @@ static size_t ifnvsize;
  * failure.
  */
 static void
-addonex(void ***arr, size_t *curmemcount, void **member, size_t membersize)
+xaddone(void ***arr, size_t *curmemcount, void **member, size_t membersize)
 {
 	*arr = recallocarray(*arr, *curmemcount, *curmemcount + 1, sizeof(char *));
 	if (*arr == NULL)
@@ -276,7 +276,7 @@ parsepeerconfig(struct peer *peer, const struct scfge *cfg, int peernumber)
 			}
 			for (j = 1; j < subcfg->strvsize; j++) {
 				if (strcmp(subcfg->strv[j], "*") == 0) {
-					addonex((void ***)&peer->allowedips,
+					xaddone((void ***)&peer->allowedips,
 					    &peer->allowedipssize,
 					    (void **)&allowedip,
 					    sizeof(*allowedip));
@@ -286,7 +286,7 @@ parsepeerconfig(struct peer *peer, const struct scfge *cfg, int peernumber)
 					    == -1)
 						abort();
 
-					addonex((void ***)&peer->allowedips,
+					xaddone((void ***)&peer->allowedips,
 					    &peer->allowedipssize,
 					    (void **)&allowedip,
 					    sizeof(*allowedip));
@@ -296,7 +296,7 @@ parsepeerconfig(struct peer *peer, const struct scfge *cfg, int peernumber)
 					    == -1)
 						abort();
 				} else {
-					addonex((void ***)&peer->allowedips,
+					xaddone((void ***)&peer->allowedips,
 					    &peer->allowedipssize,
 					    (void **)&allowedip,
 					    sizeof(*allowedip));
@@ -485,7 +485,7 @@ parseinterfaceconfigs(void)
 					continue;
 				}
 				for (j = 1; j < subcfg->strvsize; j++) {
-					addonex((void ***)&ifn->ifaddrs,
+					xaddone((void ***)&ifn->ifaddrs,
 					    &ifn->ifaddrssize, (void **)&ifaddr,
 					    sizeof(*ifaddr));
 
@@ -564,7 +564,7 @@ parseinterfaceconfigs(void)
 					continue;
 				}
 				for (j = 1; j < subcfg->strvsize; j++) {
-					addonex((void ***)&ifn->listenaddrs,
+					xaddone((void ***)&ifn->listenaddrs,
 					    &ifn->listenaddrssize,
 					    (void **)&listenaddr,
 					    sizeof(*listenaddr));
@@ -589,7 +589,7 @@ parseinterfaceconfigs(void)
 					e = 1;
 					continue;
 				}
-				addonex((void ***)&ifn->peers, &ifn->peerssize,
+				xaddone((void ***)&ifn->peers, &ifn->peerssize,
 				    (void **)&peer, sizeof(*peer));
 				if (parsepeerconfig(peer, subcfg,
 				    ifn->peerssize) == -1) {
@@ -840,7 +840,7 @@ parseglobalconfig(const struct scfge *root)
 				continue;
 			}
 		} else if (strcasecmp("interface", key) == 0) {
-			addonex((void ***)&ifnv, &ifnvsize, (void **)&ifn,
+			xaddone((void ***)&ifnv, &ifnvsize, (void **)&ifn,
 			    sizeof(*ifn));
 			ifn->scfge = subcfg;
 		} else {
