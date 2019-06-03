@@ -865,7 +865,35 @@ parseglobalconfig(const struct scfge *root)
 }
 
 /*
- * Create a list of interfaces plus some global settings.
+ * Make sure the given file descriptor belongs to a regular file, that is owned
+ * by the superuser and can only be read or modified by the owner or group.
+ *
+ * Return 1 if the fd is safe, 0 otherwise.
+ */
+static int
+isfdsafe(int fd)
+{
+	struct stat st;
+
+	if (fstat(fd, &st) == -1)
+		return 0;
+
+	if (st.st_uid != 0)
+		return 0;
+
+	if (!S_ISREG(st.st_mode))
+		return 0;
+
+	if ((st.st_mode & S_IRWXO) != 0)
+		return 0;
+
+	return 1;
+}
+
+/*
+ * Read a config from a file-descriptor and parse it. On success, the result is
+ * stored in "rifnv", "rifnvsize", "unprivuid", "unprivgid" and
+ * "rlogfacilitystr".
  *
  * yyparse creates a tree of scfg entries.
  *
@@ -875,36 +903,17 @@ parseglobalconfig(const struct scfge *root)
  * Exit on error.
  */
 void
-xparseconfigfile(const char *filename, struct ifn ***rifnv, size_t *rifnvsize,
+xparseconfigfd(int fd, struct ifn ***rifnv, size_t *rifnvsize,
     uid_t *unprivuid, gid_t *unprivgid, char **rlogfacilitystr)
 {
-	struct stat st;
-
-	if ((yyd = open(filename, O_RDONLY|O_CLOEXEC)) == -1)
-		err(1, "%s", filename);
-
-	if (fstat(yyd, &st) == -1)
-		err(1, "stat");
-
-	/* owned by the superuser */
-	if (st.st_uid != 0)
-		errx(1, "%s: not owned by the superuser", filename);
-
-	/* regular file */
-	if (!S_ISREG(st.st_mode))
-		errx(1, "%s: not a regular file", filename);
-
-	/* may only be accessible by the owner and group */
-	if ((st.st_mode & S_IRWXO) != 0)
-		errx(1, "%s: readable or writable by others", filename);
+	yyd = fd;
 
 	if (yyparse() != 0)
 		errx(1, "%s: yyparse", __func__);
-	if (close(yyd) == -1)
-		err(1, "close %s", filename);
 
 	if (parseglobalconfig(scfg) == -1)
 		errx(1, NULL);
+
 	if (parseinterfaceconfigs() == -1)
 		errx(1, NULL);
 
@@ -914,8 +923,33 @@ xparseconfigfile(const char *filename, struct ifn ***rifnv, size_t *rifnvsize,
 	*rifnvsize = ifnvsize;
 	*unprivuid = guid;
 	*unprivgid = ggid;
+
 	if ((*rlogfacilitystr = strdup(logfacilitystr)) == NULL)
 		err(1, "%s strdup", __func__);
+}
+
+/*
+ * Create a list of interfaces plus some global settings.
+ *
+ * Exit on error.
+ */
+void
+xparseconfigfile(const char *filename, struct ifn ***rifnv, size_t *rifnvsize,
+    uid_t *unprivuid, gid_t *unprivgid, char **rlogfacilitystr)
+{
+	int fd;
+
+	if ((fd = open(filename, O_RDONLY|O_CLOEXEC)) == -1)
+		err(1, "%s", filename);
+
+	if (!isfdsafe(fd))
+		errx(1, "%s: must be owned by the superuser and may only be"
+		    " readable or writable by the owner or group", filename);
+
+	xparseconfigfd(fd, rifnv, rifnvsize, unprivuid, unprivgid, rlogfacilitystr);
+
+	if (close(fd) == -1)
+		err(1, "close %s", filename);
 }
 
 /*

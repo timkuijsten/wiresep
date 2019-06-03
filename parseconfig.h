@@ -100,8 +100,13 @@ union smsg {
  *
  * Exit on error.
  */
+
+void xparseconfigfd(int, struct ifn ***, size_t *, uid_t *, gid_t *,
+    char **);
+
+/* wrapper around xparseconfigfd */
 void xparseconfigfile(const char *, struct ifn ***, size_t *, uid_t *, gid_t *,
-char **);
+    char **);
 
 /*
  * Load private keys of all interfaces, determine public key and mac1key.
