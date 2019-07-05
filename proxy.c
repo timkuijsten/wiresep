@@ -349,7 +349,7 @@ handlesockmsg(const struct sockmap *sockmap)
 
 	mtcode = msg[0];
 	if (mtcode >= MTNCODES) {
-		logwarnx("%s unexpected message code got %d", __func__, mtcode);
+		loginfox("%s unexpected message code got %d", __func__, mtcode);
 		return -1;
 	}
 
@@ -378,14 +378,16 @@ handlesockmsg(const struct sockmap *sockmap)
 		}
 
 		if (wire_proxysendmsg(eport, ifn->id, sockmap->listenaddr,
-		    &peeraddr, mtcode, msg, msgsize) == -1)
-			logexitx(1, "wire_proxysendmsg eport");
+		    &peeraddr, mtcode, msg, msgsize) == -1) {
+			logwarn("enclave does not respond");
+			return -1;
+		}
 		break;
 	case MSGWGRESP:
 		mwr = (struct msgwgresp *)msg;
 		if (!findpeerbysessidandifn(&peer, ifn,
 		    le32toh(mwr->receiver))) {
-			logwarnx("MSGWGRESP unknown receiver %u for %s",
+			loginfox("MSGWGRESP unknown receiver %u for %s",
 			    le32toh(mwr->receiver), ifn->ifname);
 			return -1;
 		}
@@ -396,8 +398,10 @@ handlesockmsg(const struct sockmap *sockmap)
 		}
 
 		if (wire_proxysendmsg(eport, ifn->id, sockmap->listenaddr,
-		    &peeraddr, mtcode, msg, msgsize) == -1)
-			logexitx(1, "wire_proxysendmsg eport");
+		    &peeraddr, mtcode, msg, msgsize) == -1) {
+			logwarn("enclave does not respond");
+			return -1;
+		}
 		break;
 	case MSGWGCOOKIE:
 		/* TODO */
@@ -406,14 +410,16 @@ handlesockmsg(const struct sockmap *sockmap)
 		mwdhdr = (struct msgwgdatahdr *)msg;
 		if (!findpeerbysessidandifn(&peer, ifn,
 		    le32toh(mwdhdr->receiver))) {
-			logwarnx("MSGWGDATA unknown receiver %u for %s",
+			loginfox("MSGWGDATA unknown receiver %u for %s",
 			    le32toh(mwdhdr->receiver), ifn->ifname);
 			return -1;
 		}
 
 		if (wire_proxysendmsg(ifn->port, ifn->id, sockmap->listenaddr,
-		    &peeraddr, mtcode, msg, msgsize) == -1)
-			logexitx(1, "wire_proxysendmsg %s", ifn->ifname);
+		    &peeraddr, mtcode, msg, msgsize) == -1) {
+			logwarn("%s does not respond", ifn->ifname);
+			return -1;
+		}
 		break;
 	default:
 		if (verbose > 1)
@@ -680,7 +686,6 @@ proxy_init(int masterport)
 
 	if ((size_t)getdtablecount() != stdopen + 2 + ifnvsize)
 		logexitx(1, "descriptor mismatch: %d", getdtablecount());
-
 
 	/*
 	 * Initialize IPC and UDP sockets in one sorted array so that we can
