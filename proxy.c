@@ -20,7 +20,9 @@
 #include <sys/time.h>
 
 #include <assert.h>
+#include <errno.h>
 #include <netinet/in.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -29,7 +31,7 @@
 #include "wireprot.h"
 #include "wiresep.h"
 
-void proxy_printinfo(FILE *);
+void proxy_loginfo(void);
 
 extern int background, verbose;
 
@@ -54,6 +56,10 @@ struct peer {
 	int64_t sessnext;
 	int64_t sesscurr;
 	int64_t sessprev;
+	size_t sent;
+	size_t sentsz;
+	size_t recv;
+	size_t recvsz;
 };
 
 struct ifn {
@@ -84,6 +90,27 @@ static struct sockaddr_storage peeraddr;
 /* mapping of server sockets to listenaddr or ifn */
 static struct sockmap **sockmapv;
 static size_t sockmapvsize;
+
+static size_t totalfwdifn, totalfwdifnsz, totalfwdenc, totalfwdencsz, totalrecv,
+    totalrecvsz, corrupted, invalidmac, invalidpeer;
+
+static int logstats, doterm;
+
+static void
+handlesig(int signo)
+{
+	switch (signo) {
+	case SIGUSR1:
+		logstats = 1;
+		break;
+	case SIGTERM:
+		doterm = 1;
+		break;
+	default:
+		logwarnx("unexpected signal %d %s", signo, strsignal(signo));
+		break;
+	}
+}
 
 /*
  * Find a socket mapping by socket descriptor. Return 1 if found and updates
@@ -347,9 +374,13 @@ handlesockmsg(const struct sockmap *sockmap)
 	}
 	msgsize = rc;
 
+	totalrecv++;
+	totalrecvsz += msgsize;
+
 	mtcode = msg[0];
 	if (mtcode >= MTNCODES) {
 		loginfox("%s unexpected message code got %d", __func__, mtcode);
+		corrupted++;
 		return -1;
 	}
 
@@ -357,11 +388,13 @@ handlesockmsg(const struct sockmap *sockmap)
 		if (msgsize < msgtypes[mtcode].size) {
 			logwarnx("expected at least %zu bytes instead of %zu",
 			    msgtypes[1].size, msgsize);
+			corrupted++;
 			return -1;
 		}
 	} else if (msgsize != msgtypes[mtcode].size) {
 		logwarnx("%s expected message size %zu, got %zu",
 		    __func__, msgtypes[1].size, msgsize);
+		corrupted++;
 		return -1;
 	}
 
@@ -374,6 +407,7 @@ handlesockmsg(const struct sockmap *sockmap)
 		if (!ws_validmac(mwi->mac1, sizeof(mwi->mac1), mwi, MAC1OFFSETINIT,
 		    ifn->mac1key)) {
 			logwarnx("MSGWGINIT invalid mac1");
+			invalidmac++;
 			return -1;
 		}
 
@@ -382,6 +416,9 @@ handlesockmsg(const struct sockmap *sockmap)
 			logwarn("enclave does not respond");
 			return -1;
 		}
+
+		totalfwdenc++;
+		totalfwdencsz += msgsize;
 		break;
 	case MSGWGRESP:
 		mwr = (struct msgwgresp *)msg;
@@ -389,11 +426,13 @@ handlesockmsg(const struct sockmap *sockmap)
 		    le32toh(mwr->receiver))) {
 			loginfox("MSGWGRESP unknown receiver %u for %s",
 			    le32toh(mwr->receiver), ifn->ifname);
+			invalidpeer++;
 			return -1;
 		}
 		if (!ws_validmac(mwr->mac1, sizeof(mwr->mac1), mwr,
 		    MAC1OFFSETRESP, ifn->mac1key)) {
 			logwarnx("MSGWGRESP invalid mac1");
+			invalidmac++;
 			return -1;
 		}
 
@@ -402,6 +441,9 @@ handlesockmsg(const struct sockmap *sockmap)
 			logwarn("enclave does not respond");
 			return -1;
 		}
+
+		totalfwdenc++;
+		totalfwdencsz += msgsize;
 		break;
 	case MSGWGCOOKIE:
 		/* TODO */
@@ -412,18 +454,28 @@ handlesockmsg(const struct sockmap *sockmap)
 		    le32toh(mwdhdr->receiver))) {
 			loginfox("MSGWGDATA unknown receiver %u for %s",
 			    le32toh(mwdhdr->receiver), ifn->ifname);
+			invalidpeer++;
 			return -1;
 		}
+
+		peer->recv++;
+		peer->recvsz += msgsize;
 
 		if (wire_proxysendmsg(ifn->port, ifn->id, sockmap->listenaddr,
 		    &peeraddr, mtcode, msg, msgsize) == -1) {
 			logwarn("%s does not respond", ifn->ifname);
 			return -1;
 		}
+
+		peer->sent++;
+		peer->sentsz += msgsize;
+		totalfwdifn++;
+		totalfwdifnsz += msgsize;
 		break;
 	default:
 		if (verbose > 1)
 			loginfox("received unsupported message %d", mtcode);
+		corrupted++;
 		return -1;
 	}
 
@@ -463,8 +515,21 @@ proxy_serv(void)
 		logexit(1, "kevent");
 
 	for (;;) {
-		if ((nev = kevent(kq, NULL, 0, ev, evsize, NULL)) == -1)
-			logexit(1, "kevent");
+		if (logstats) {
+			proxy_loginfo();
+			logstats = 0;
+		}
+
+		if (doterm)
+			logexitx(1, "received TERM, shutting down");
+
+		if ((nev = kevent(kq, NULL, 0, ev, evsize, NULL)) == -1) {
+			if (errno == EINTR) {
+				continue;
+			} else {
+				logexit(1, "kevent");
+			}
+		}
 
 		if (verbose > 2)
 			logdebugx("%d events", nev);
@@ -660,6 +725,7 @@ void
 proxy_init(int masterport)
 {
 	struct sockaddr_storage *listenaddr;
+	struct sigaction sa;
 	size_t i, m, n;
 	int stdopen, s;
 
@@ -744,6 +810,16 @@ proxy_init(int masterport)
 	if (verbose > 1)
 		loginfox("server sockets created: ");
 
+	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
+	sa.sa_handler = handlesig;
+	sa.sa_flags = SA_RESTART;
+	if (sigemptyset(&sa.sa_mask) == -1)
+		logexit(1, "sigemptyset");
+	if (sigaction(SIGUSR1, &sa, NULL) == -1)
+		logexit(1, "sigaction SIGUSR1");
+	if (sigaction(SIGTERM, &sa, NULL) == -1)
+		logexit(1, "sigaction SIGTERM");
+
 	if (chroot(EMPTYDIR) == -1)
 		logexit(1, "chroot %s", EMPTYDIR);
 	if (dropuser(uid, gid) == -1)
@@ -755,7 +831,7 @@ proxy_init(int masterport)
 }
 
 void
-proxy_printinfo(FILE *fp)
+proxy_loginfo(void)
 {
 	struct ifn *ifn;
 	struct peer *peer;
@@ -763,26 +839,32 @@ proxy_printinfo(FILE *fp)
 
 	for (n = 0; n < ifnvsize; n++) {
 		ifn = ifnv[n];
-		fprintf(fp, "ifn %zu\n", n);
-		fprintf(fp, "id %d\n", ifn->id);
-		fprintf(fp, "port %d\n", ifn->port);
-		fprintf(fp, "mac1key\n");
-		hexdump(fp, ifn->mac1key, sizeof(ifn->mac1key),
-		    sizeof(ifn->mac1key));
-		fprintf(fp, "cookiey\n");
-		hexdump(fp, ifn->cookiekey, sizeof(ifn->cookiekey),
-		    sizeof(ifn->cookiekey));
+		logwarnx("ifn %zu, id %d, port %d, sessmapvsize %zu", n,
+		    ifn->id, ifn->port, ifn->sessmapvsize);
 
 		for (m = 0; m < ifn->peerssize; m++) {
 			peer = ifn->peers[m];
-			fprintf(fp, "peer %zu\n", m);
-			fprintf(fp, "sessnext %llu\n", peer->sessnext);
-			fprintf(fp, "sesscurr %llu\n", peer->sesscurr);
-			fprintf(fp, "sessprev %llu\n", peer->sessprev);
+			logwarnx("peer %zu session tent/next/curr/prev "
+			    "%x/%x/%x/%x",
+			    m,
+			    (uint32_t)peer->sesstent,
+			    (uint32_t)peer->sessnext,
+			    (uint32_t)peer->sesscurr,
+			    (uint32_t)peer->sessprev);
 		}
-		for (m = 0; m < ifn->listenaddrssize; m++) {
-			printaddr(fp, (struct sockaddr *)ifn->listenaddrs[m],
-			    "addr", "\n");
-		}
+
+		for (m = 0; m < ifn->sessmapvsize; m++)
+			logwarnx("%02d %07x", m, (uint32_t)ifn->sessmapv[m]->sessid);
 	}
+
+	logwarnx("total recv %zu %zu bytes\n"
+	    "fwd ifn %zu %zu bytes\n"
+	    "fwd enc %zu %zu bytes\n"
+	    "corrupted %zu\n"
+	    "invalid mac %zu\n"
+	    "invalid peer %zu",
+	    totalrecv, totalrecvsz,
+	    totalfwdifn, totalfwdifnsz,
+	    totalfwdenc, totalfwdencsz,
+	    corrupted, invalidmac, invalidpeer);
 }
