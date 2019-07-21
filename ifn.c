@@ -2230,6 +2230,7 @@ peernew(uint32_t id, const char *name)
 {
 	struct peer *peer;
 	const int on = 1;
+	int len;
 
 	if ((peer = malloc(sizeof(*peer))) == NULL)
 		logexit(1, "%s malloc peer", __func__);
@@ -2259,6 +2260,26 @@ peernew(uint32_t id, const char *name)
 	if (setsockopt(peer->s4, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on))
 	    == -1)
 		logexit(1, "setsockopt SO_REUSEADDR");
+
+	len = MAXRECVBUF;
+	if (setsockopt(peer->s6, SOL_SOCKET, SO_RCVBUF, &len, sizeof(len))
+	    == -1)
+		logexit(1, "setsockopt");
+
+	if (len < MAXRECVBUF)
+		logexitx(1, "could not maximize udp6 receive buffer: %d", len);
+
+	loginfox("peer udp6 receive buffer: %d", len);
+
+	len = MAXRECVBUF;
+	if (setsockopt(peer->s4, SOL_SOCKET, SO_RCVBUF, &len, sizeof(len))
+	    == -1)
+		logexit(1, "setsockopt");
+
+	if (len < MAXRECVBUF)
+		logexitx(1, "could not maximize udp4 receive buffer: %d", len);
+
+	loginfox("peer udp4 receive buffer: %d", len);
 
 	/* mark sessions as unused */
 	peer->snext = peer->scurr = peer->sprev = peer->stent = NULL;

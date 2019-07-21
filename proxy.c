@@ -728,6 +728,7 @@ proxy_init(int masterport)
 	struct sigaction sa;
 	size_t i, m, n;
 	int stdopen, s;
+	socklen_t len;
 
 	recvconfig(masterport);
 
@@ -791,6 +792,17 @@ proxy_init(int masterport)
 					    "bind failed:", "\n");
 				logexit(1, "bind");
 			}
+
+			len = MAXRECVBUF;
+			if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, &len,
+			    sizeof(len)) == -1)
+				logexit(1, "setsockopt");
+
+			if (len < MAXRECVBUF)
+				logexitx(1, "could not maximize receive buffer:"
+				    " %d", len);
+
+			loginfox("socket receive buffer: %d", len);
 
 			sockmapv[i] = malloc(sizeof(*sockmapv[i]));
 			if (sockmapv[i] == NULL)
