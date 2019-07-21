@@ -31,6 +31,8 @@
 #include "wireprot.h"
 #include "wiresep.h"
 
+#define MAXPEERS 10000
+
 void proxy_loginfo(void);
 
 extern int background, verbose;
@@ -96,6 +98,56 @@ static size_t totalfwdifn, totalfwdifnsz, totalfwdenc, totalfwdencsz, totalrecv,
 
 static int logstats, doterm;
 
+static int
+sortsessmapv(const void *a, const void *b)
+{
+	const struct sessmap *x = *(const struct sessmap **)a;
+	const struct sessmap *y = *(const struct sessmap **)b;
+
+	if (x->sessid == y->sessid)
+		return 0;
+
+	if (x->sessid < y->sessid)
+		return -1;
+
+	return 1;
+}
+
+static void
+sort(struct sessmap **sessmapv, size_t sessmapvsize)
+{
+	qsort(sessmapv, sessmapvsize, sizeof(*sessmapv), sortsessmapv);
+}
+
+/*
+ * Return the index of "sessid" in the sorted array "sessmapv" or -1 if not
+ * found.
+ */
+static int
+sessmapvsearch(struct sessmap **sessmapv, size_t sessmapvsize, int64_t sessid)
+{
+	int i, offset;
+
+	offset = 0;
+
+	while (sessmapvsize) {
+		/* ceil of middle index */
+		i = ((sessmapvsize + 1) / 2) - 1;
+
+		if (sessid == sessmapv[offset + i]->sessid) {
+			return offset + i;
+		} else if (sessid > sessmapv[offset + i]->sessid) {
+			offset = offset + i + 1;
+		} else {
+			sessmapvsize--;
+		}
+		/* floor */
+		sessmapvsize /= 2;
+	}
+
+	return -1;
+}
+
 static void
 handlesig(int signo)
 {
@@ -152,63 +204,58 @@ findpeerbyidandifn(struct peer **p, uint32_t peerid, const struct ifn *ifn)
 }
 
 /*
- * Find a session by "sessid". Return 1 if found and updates "ifn" to
- * point to it. 0 if not found and updates "ifn" to NULL.
- *
- * XXX log(n) use sessmapv
+ * Find a session by "sessid". Return 1 if found and updates "peer" to
+ * point to it. 0 if not found and updates "peer" to NULL.
  */
 static int
 findpeerbysessidandifn(struct peer **peer, const struct ifn *ifn,
-    uint32_t sessid)
+    int64_t sessid)
 {
-	size_t n;
+	int sessidx;
 
-	*peer = NULL;
-
-	for (n = 0; n < ifn->peerssize; n++) {
-		if (sessid == ifn->peers[n]->sesscurr) {
-			*peer = ifn->peers[n];
-			return 1;
-		}
-		if (sessid == ifn->peers[n]->sessprev) {
-			*peer = ifn->peers[n];
-			return 1;
-		}
-		if (sessid == ifn->peers[n]->sesstent) {
-			*peer = ifn->peers[n];
-			return 1;
-		}
-		if (sessid == ifn->peers[n]->sessnext) {
-			*peer = ifn->peers[n];
-			return 1;
-		}
+	sessidx = sessmapvsearch(ifn->sessmapv, ifn->sessmapvsize, sessid);
+	if (sessidx == -1) {
+		*peer = NULL;
+		return 0;
 	}
 
-	return 0;
+	*peer = ifn->sessmapv[sessidx]->peer;
+	return 1;
 }
 
 /*
  * Replace session id "oid" with "nid".
  *
- * Return 0 on success, -1 if "oid" does not exist.
+ * O(log(n) + n * log(n))
  *
- * XXX log(n)
+ * Return 0 on success, -1 if "oid" does not exist.
  */
 static int
 sessmapvreplace(const struct ifn *ifn, struct peer *peer, int64_t oid,
     int64_t nid)
 {
-	size_t i;
+	int sessidx;
 
-	for (i = 0; i < ifn->sessmapvsize; i++) {
-		if (ifn->sessmapv[i]->sessid == oid) {
-			ifn->sessmapv[i]->sessid = nid;
-			ifn->sessmapv[i]->peer = peer;
-			return 0;
-		}
+	sessidx = sessmapvsearch(ifn->sessmapv, ifn->sessmapvsize, oid);
+	if (sessidx == -1)
+		return -1;
+
+	ifn->sessmapv[sessidx]->sessid = nid;
+	ifn->sessmapv[sessidx]->peer = peer;
+
+	if (nid == oid) {
+		loginfox("old sessid equals new sessid %u", oid);
+	} else if (nid > oid) {
+		loginfox("replaced %x@%d with %x, resort from index %d (%d)",
+		    oid, sessidx, nid, sessidx, ifn->sessmapvsize - sessidx);
+		sort(&ifn->sessmapv[sessidx], ifn->sessmapvsize - sessidx);
+	} else {
+		loginfox("replaced %x@%d with %x, resort from index 0 (%d)",
+		    oid, sessidx, nid, sessidx + 1);
+		sort(ifn->sessmapv, sessidx + 1);
 	}
 
-	return -1;
+	return 0;
 }
 
 /*
@@ -654,7 +701,9 @@ recvconfig(int masterport)
 			ifn->peers[m] = peer;
 		}
 
-		/* init session map with unused session ids */
+		if (MAXPEERS / 4 < ifn->peerssize)
+			logexitx(1, "only %d peers are supported", MAXPEERS);
+
 		ifn->sessmapvsize = ifn->peerssize * 4;
 		if ((ifn->sessmapv = calloc(ifn->sessmapvsize,
 		    sizeof(*ifn->sessmapv))) == NULL)
