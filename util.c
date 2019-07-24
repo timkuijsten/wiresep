@@ -664,6 +664,7 @@ logexit(int code, const char *msg, ...)
 		syslog(LOG_ERR, "%m");
 		exit(code);
 	} else {
+		fprintf(stderr, "%s[%d]: ", getprogname(), getpid());
 		if (msg) {
 			vfprintf(stderr, msg, ap);
 			fprintf(stderr, ": %s\n", strerror(errno));
@@ -685,6 +686,7 @@ logexitx(int code, const char *msg, ...)
 		vsyslog(LOG_ERR, msg, ap);
 		exit(code);
 	} else {
+		fprintf(stderr, "%s[%d]: ", getprogname(), getpid());
 		vfprintf(stderr, msg, ap);
 		fprintf(stderr, "\n");
 		exit(code);
@@ -716,6 +718,7 @@ logwarn(const char *msg, ...)
 		vsyslog(LOG_WARNING, msg, ap);
 		syslog(LOG_WARNING, "%m");
 	} else {
+		fprintf(stderr, "%s[%d]: ", getprogname(), getpid());
 		if (msg) {
 			vfprintf(stderr, msg, ap);
 			fprintf(stderr, ": %s\n", strerror(errno));
@@ -738,6 +741,7 @@ logwarnx(const char *msg, ...)
 	if (background) {
 		vsyslog(LOG_WARNING, msg, ap);
 	} else {
+		fprintf(stderr, "%s[%d]: ", getprogname(), getpid());
 		vfprintf(stderr, msg, ap);
 		fprintf(stderr, "\n");
 	}
@@ -757,6 +761,7 @@ lognotice(const char *msg, ...)
 		vsyslog(LOG_NOTICE, msg, ap);
 		syslog(LOG_NOTICE, "%m");
 	} else {
+		fprintf(stderr, "%s[%d]: ", getprogname(), getpid());
 		if (msg) {
 			vfprintf(stderr, msg, ap);
 			fprintf(stderr, ": %s\n", strerror(errno));
@@ -779,6 +784,7 @@ lognoticex(const char *msg, ...)
 	if (background) {
 		vsyslog(LOG_NOTICE, msg, ap);
 	} else {
+		fprintf(stderr, "%s[%d]: ", getprogname(), getpid());
 		vfprintf(stderr, msg, ap);
 		fprintf(stderr, "\n");
 	}
@@ -798,6 +804,7 @@ loginfo(const char *msg, ...)
 		vsyslog(LOG_INFO, msg, ap);
 		syslog(LOG_INFO, "%m");
 	} else {
+		fprintf(stderr, "%s[%d]: ", getprogname(), getpid());
 		if (msg) {
 			vfprintf(stderr, msg, ap);
 			fprintf(stderr, ": %s\n", strerror(errno));
@@ -820,6 +827,7 @@ loginfox(const char *msg, ...)
 	if (background) {
 		vsyslog(LOG_INFO, msg, ap);
 	} else {
+		fprintf(stderr, "%s[%d]: ", getprogname(), getpid());
 		vfprintf(stderr, msg, ap);
 		fprintf(stderr, "\n");
 	}
@@ -839,6 +847,7 @@ logdebug(const char *msg, ...)
 		vsyslog(LOG_DEBUG, msg, ap);
 		syslog(LOG_DEBUG, "%m");
 	} else {
+		fprintf(stderr, "%s[%d]: ", getprogname(), getpid());
 		if (msg) {
 			vfprintf(stderr, msg, ap);
 			fprintf(stderr, ": %s\n", strerror(errno));
@@ -861,6 +870,7 @@ logdebugx(const char *msg, ...)
 	if (background) {
 		vsyslog(LOG_DEBUG, msg, ap);
 	} else {
+		fprintf(stderr, "%s[%d]: ", getprogname(), getpid());
 		vfprintf(stderr, msg, ap);
 		fprintf(stderr, "\n");
 	}
