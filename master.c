@@ -90,9 +90,16 @@ struct peer {
  */
 struct ifn {
 	struct scfge *scfge;	/* original user config data */
-	int mastport;
-	int enclport;
-	int proxport;
+	int ifnwithmast;	/* Read/write descriptor the ifn process uses
+				 * for communication with the master process.
+				 */
+	int mastwithifn;	/* Read/write descriptor the master process uses
+				 * for communication with the ifn.
+				 */
+	int ifnwithencl;
+	int enclwithifn;
+	int ifnwithprox;
+	int proxwithifn;
 	char *ifname; /* nul terminated name of the interface */
 	char *ifdesc; /* nul terminated label for the interface */
 	struct cidraddr **ifaddrs;
@@ -122,6 +129,10 @@ static union {
 	struct seos eos;
 } smsg;
 
+/* communication channels */
+int mastwithencl, enclwithmast, mastwithprox, proxwithmast, enclwithprox,
+    proxwithencl;
+
 /*
  * Send interface info to the enclave.
  *
@@ -132,7 +143,7 @@ static union {
  * Exit on error.
  */
 void
-sendconfig_enclave(int mastport, int proxport)
+sendconfig_enclave(int mast2encl, int enclwithprox)
 {
 	struct ifn *ifn;
 	struct peer *peer;
@@ -144,10 +155,10 @@ sendconfig_enclave(int mastport, int proxport)
 	smsg.init.verbose = verbose;
 	smsg.init.uid = guid;
 	smsg.init.gid = ggid;
-	smsg.init.proxport = proxport;
+	smsg.init.proxport = enclwithprox;
 	smsg.init.nifns = ifnvsize;
 
-	if (wire_sendmsg(mastport, SINIT, &smsg.init, sizeof(smsg.init)) == -1)
+	if (wire_sendmsg(mast2encl, SINIT, &smsg.init, sizeof(smsg.init)) == -1)
 		logexitx(1, "%s wire_sendmsg SINIT", __func__);
 
 	for (n = 0; n < ifnvsize; n++) {
@@ -156,7 +167,7 @@ sendconfig_enclave(int mastport, int proxport)
 		memset(&smsg.ifn, 0, sizeof(smsg.ifn));
 
 		smsg.ifn.ifnid = n;
-		smsg.ifn.ifnport = ifn->enclport;
+		smsg.ifn.ifnport = ifn->enclwithifn;
 		snprintf(smsg.ifn.ifname, sizeof(smsg.ifn.ifname), "%s", ifn->ifname);
 		if (ifn->ifdesc && strlen(ifn->ifdesc) > 0)
 			snprintf(smsg.ifn.ifdesc, sizeof(smsg.ifn.ifdesc), "%s", ifn->ifdesc);
@@ -167,7 +178,7 @@ sendconfig_enclave(int mastport, int proxport)
 		memcpy(smsg.ifn.cookiekey, ifn->cookiekey, sizeof(smsg.ifn.cookiekey));
 		smsg.ifn.npeers = ifn->peerssize;
 
-		if (wire_sendmsg(mastport, SIFN, &smsg.ifn, sizeof(smsg.ifn)) == -1)
+		if (wire_sendmsg(mast2encl, SIFN, &smsg.ifn, sizeof(smsg.ifn)) == -1)
 			logexitx(1, "%s wire_sendmsg SIFN", __func__);
 
 		for (m = 0; m < ifn->peerssize; m++) {
@@ -187,7 +198,7 @@ sendconfig_enclave(int mastport, int proxport)
 			memcpy(smsg.peer.mac1key, peer->mac1key,
 			    sizeof(smsg.peer.mac1key));
 
-			if (wire_sendmsg(mastport, SPEER, &smsg.peer,
+			if (wire_sendmsg(mast2encl, SPEER, &smsg.peer,
 			    sizeof(smsg.peer)) == -1)
 				logexitx(1, "%s wire_sendmsg SPEER", __func__);
 		}
@@ -197,11 +208,19 @@ sendconfig_enclave(int mastport, int proxport)
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
-	loginfox("config sent to enclave %d", mastport);
+	loginfox("config sent to enclave %d", mast2encl);
 }
 
 /*
  * Send interface info to the proxy.
+ *
+ * "mast2prox" is used to send the config from this process to the proxy
+ * process.
+ * "proxwithencl" is the descriptor the proxy process must use to communicate
+ * with the enclave.
+ *
+ * The descriptors the proxy process must use to communicate with
+ * each ifn process are in each ifn structure.
  *
  * SINIT
  * SIFN
@@ -209,7 +228,7 @@ sendconfig_enclave(int mastport, int proxport)
  * Exit on error.
  */
 void
-sendconfig_proxy(int mastport, int enclport)
+sendconfig_proxy(int mast2prox, int proxwithencl)
 {
 	struct ifn *ifn;
 	struct sockaddr_storage *listenaddr;
@@ -221,10 +240,10 @@ sendconfig_proxy(int mastport, int enclport)
 	smsg.init.verbose = verbose;
 	smsg.init.uid = guid;
 	smsg.init.gid = ggid;
-	smsg.init.enclport = enclport;
+	smsg.init.enclport = proxwithencl;
 	smsg.init.nifns = ifnvsize;
 
-	if (wire_sendmsg(mastport, SINIT, &smsg.init, sizeof(smsg.init)) == -1)
+	if (wire_sendmsg(mast2prox, SINIT, &smsg.init, sizeof(smsg.init)) == -1)
 		logexitx(1, "%s wire_sendmsg SINIT", __func__);
 
 	for (n = 0; n < ifnvsize; n++) {
@@ -247,7 +266,7 @@ sendconfig_proxy(int mastport, int enclport)
 		    sizeof(smsg.ifn.cookiekey));
 		smsg.ifn.npeers = ifn->peerssize;
 
-		if (wire_sendmsg(mastport, SIFN, &smsg.ifn, sizeof(smsg.ifn))
+		if (wire_sendmsg(mast2prox, SIFN, &smsg.ifn, sizeof(smsg.ifn))
 		    == -1)
 			logexitx(1, "%s wire_sendmsg SIFN", __func__);
 
@@ -261,7 +280,7 @@ sendconfig_proxy(int mastport, int enclport)
 			memcpy(&smsg.cidraddr.addr, listenaddr,
 			    sizeof(smsg.cidraddr.addr));
 
-			if (wire_sendmsg(mastport, SCIDRADDR, &smsg.cidraddr,
+			if (wire_sendmsg(mast2prox, SCIDRADDR, &smsg.cidraddr,
 			    sizeof(smsg.cidraddr)) == -1)
 				logexitx(1, "%s wire_sendmsg SCIDRADDR", __func__);
 		}
@@ -271,7 +290,7 @@ sendconfig_proxy(int mastport, int enclport)
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
-	loginfox("config sent to proxy %d", mastport);
+	loginfox("config sent to proxy %d", mast2prox);
 }
 
 /*
@@ -285,7 +304,7 @@ sendconfig_proxy(int mastport, int enclport)
  * Exit on error.
  */
 void
-sendconfig_ifn(int ifnid, int mastport, int enclport, int proxport)
+sendconfig_ifn(int ifnid)
 {
 	struct cidraddr *allowedip;
 	struct cidraddr *ifaddr;
@@ -307,11 +326,11 @@ sendconfig_ifn(int ifnid, int mastport, int enclport, int proxport)
 	smsg.init.verbose = verbose;
 	smsg.init.uid = ifn->uid;
 	smsg.init.gid = ifn->gid;
-	smsg.init.enclport = enclport;
-	smsg.init.proxport = proxport;
+	smsg.init.enclport = ifn->ifnwithencl;
+	smsg.init.proxport = ifn->ifnwithprox;
 
-	if (wire_sendmsg(mastport, SINIT, &smsg.init, sizeof(smsg.init)) == -1)
-		logexitx(1, "%s wire_sendmsg SINIT %d", __func__, mastport);
+	if (wire_sendmsg(ifn->mastwithifn, SINIT, &smsg.init, sizeof(smsg.init)) == -1)
+		logexitx(1, "%s wire_sendmsg SINIT %d", __func__, ifn->mastwithifn);
 
 	memset(&smsg.ifn, 0, sizeof(smsg.ifn));
 
@@ -325,7 +344,7 @@ sendconfig_ifn(int ifnid, int mastport, int enclport, int proxport)
 	smsg.ifn.nlistenaddrs = ifn->listenaddrssize;
 	smsg.ifn.npeers = ifn->peerssize;
 
-	if (wire_sendmsg(mastport, SIFN, &smsg.ifn, sizeof(smsg.ifn)) == -1)
+	if (wire_sendmsg(ifn->mastwithifn, SIFN, &smsg.ifn, sizeof(smsg.ifn)) == -1)
 		logexitx(1, "%s wire_sendmsg SIFN %s", __func__, ifn->ifname);
 
 	/* first send interface addresses */
@@ -339,7 +358,7 @@ sendconfig_ifn(int ifnid, int mastport, int enclport, int proxport)
 		memcpy(&smsg.cidraddr.addr, &ifaddr->addr,
 		    sizeof(smsg.cidraddr.addr));
 
-		if (wire_sendmsg(mastport, SCIDRADDR, &smsg.cidraddr,
+		if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
 		    sizeof(smsg.cidraddr)) == -1)
 			logexitx(1, "%s wire_sendmsg SCIDRADDR", __func__);
 	}
@@ -354,7 +373,7 @@ sendconfig_ifn(int ifnid, int mastport, int enclport, int proxport)
 		memcpy(&smsg.cidraddr.addr, listenaddr,
 		    sizeof(smsg.cidraddr.addr));
 
-		if (wire_sendmsg(mastport, SCIDRADDR, &smsg.cidraddr,
+		if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
 		    sizeof(smsg.cidraddr)) == -1)
 			logexitx(1, "%s wire_sendmsg SCIDRADDR", __func__);
 	}
@@ -371,7 +390,7 @@ sendconfig_ifn(int ifnid, int mastport, int enclport, int proxport)
 		smsg.peer.nallowedips = peer->allowedipssize;
 		memcpy(&smsg.peer.fsa, &peer->fsa, sizeof(smsg.peer.fsa));
 
-		if (wire_sendmsg(mastport, SPEER, &smsg.peer, sizeof(smsg.peer))
+		if (wire_sendmsg(ifn->mastwithifn, SPEER, &smsg.peer, sizeof(smsg.peer))
 		    == -1)
 			logexitx(1, "wire_sendmsg SPEER %zu", m);
 
@@ -386,7 +405,7 @@ sendconfig_ifn(int ifnid, int mastport, int enclport, int proxport)
 			memcpy(&smsg.cidraddr.addr, &allowedip->addr,
 			    sizeof(smsg.cidraddr.addr));
 
-			if (wire_sendmsg(mastport, SCIDRADDR, &smsg.cidraddr,
+			if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
 			    sizeof(smsg.cidraddr)) == -1)
 				logexitx(1, "wire_sendmsg SCIDRADDR");
 		}
@@ -396,7 +415,7 @@ sendconfig_ifn(int ifnid, int mastport, int enclport, int proxport)
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
-	loginfox("config sent to %s %d", ifn->ifname, mastport);
+	loginfox("config sent to %s %d", ifn->ifname, ifn->mastwithifn);
 }
 
 /*
@@ -409,6 +428,25 @@ signal_eos(int mastport)
 
 	if (wire_sendmsg(mastport, SEOS, &smsg.eos, sizeof(smsg.eos)) == -1)
 		logexitx(1, "%s wire_sendmsg SEOS %d", __func__, mastport);
+}
+
+void
+printdescriptors(void)
+{
+	size_t n;
+
+	loginfox("enclave %d:%d", mastwithencl, enclwithmast);
+	loginfox("proxy %d:%d", mastwithprox, proxwithmast);
+
+	for (n = 0; n < ifnvsize; n++) {
+		loginfox("%s master %d:%d, enclave %d:%d, proxy %d:%d", ifnv[n]->ifname,
+		    ifnv[n]->mastwithifn,
+		    ifnv[n]->ifnwithmast,
+		    ifnv[n]->enclwithifn,
+		    ifnv[n]->ifnwithencl,
+		    ifnv[n]->proxwithifn,
+		    ifnv[n]->ifnwithprox);
+	}
 }
 
 void
@@ -1317,7 +1355,7 @@ int
 main(int argc, char **argv)
 {
 	/* descriptors for all communication channels */
-	chan mastencl, mastprox, enclprox, *ifchan, mastmast;
+	chan *ifchan, mastmast, tmpchan;
 	size_t n, m;
 	int configtest, foreground, stdopen, masterport, stat;
 	pid_t pid;
@@ -1326,13 +1364,20 @@ main(int argc, char **argv)
 
 	/* should endup in a configure script */
 	if (sizeof(struct msgwginit) != 148)
-		errx(1, "sizeof(struct msgwginit != 148: %zu", sizeof(struct msgwginit));
+		errx(1, "sizeof(struct msgwginit != 148: %zu",
+		    sizeof(struct msgwginit));
+
 	if (sizeof(struct msgwgresp) != 92)
-		errx(1, "sizeof(struct msgwgresp) != 92: %zu", sizeof(struct msgwgresp));
+		errx(1, "sizeof(struct msgwgresp) != 92: %zu",
+		    sizeof(struct msgwgresp));
+
 	if (sizeof(struct msgwgcook) != 64)
-		errx(1, "sizeof(struct msgwgcook) != 64: %zu", sizeof(struct msgwgcook));
+		errx(1, "sizeof(struct msgwgcook) != 64: %zu",
+		    sizeof(struct msgwgcook));
+
 	if (sizeof(struct msgwgdatahdr) != 16)
-		errx(1, "sizeof(struct msgwgdatahdr) != 16: %zu", sizeof(struct msgwgdatahdr));
+		errx(1, "sizeof(struct msgwgdatahdr) != 16: %zu",
+		    sizeof(struct msgwgdatahdr));
 
 	configtest = 0;
 	foreground = 0;
@@ -1377,11 +1422,11 @@ main(int argc, char **argv)
 			if (pledge("stdio", "") == -1)
 				err(1, "%s: pledge", __func__);
 
-			if (read(mastmast[1], &mastencl[0], sizeof(int))
+			if (read(mastmast[1], &mastwithencl, sizeof(int))
 			    != sizeof(int))
 				err(1, "could not read enclave descriptor in "
 				    "new master");
-			if (read(mastmast[1], &mastprox[0], sizeof(int))
+			if (read(mastmast[1], &mastwithprox, sizeof(int))
 			    != sizeof(int))
 				err(1, "could not read proxy descriptor in new "
 				    "master");
@@ -1403,8 +1448,8 @@ main(int argc, char **argv)
 			 * Signal that we are ready and each process may proceed
 			 * and start processing untrusted input.
 			 */
-			signal_eos(mastencl[0]);
-			signal_eos(mastprox[0]);
+			signal_eos(mastwithencl);
+			signal_eos(mastwithprox);
 			for (n = 0; n < ifnvsize; n++)
 				signal_eos(ifchan[n][0]);
 
@@ -1484,14 +1529,16 @@ main(int argc, char **argv)
 	if (initlog(logfacilitystr) == -1)
 		logexitx(1, "could not init log"); /* not printed if daemon */
 
-	stdopen = isopenfd(STDIN_FILENO) + isopenfd(STDOUT_FILENO) +
-	    isopenfd(STDERR_FILENO);
-
 	/*
 	 *   1. determine public key, mac1key and cookie key of each interface
 	 */
 
 	processconfig();
+
+	stdopen = isopenfd(STDIN_FILENO) + isopenfd(STDOUT_FILENO) +
+	    isopenfd(STDERR_FILENO);
+
+	assert(getdtablecount() == stdopen);
 
 	/*
 	 *   2. setup communication ports and fork each IFN, the PROXY and the
@@ -1504,20 +1551,28 @@ main(int argc, char **argv)
 
 	eenv[0] = NULL;
 
-	ifchan = NULL;
-	assert(ifnvsize < INT_MAX / 3);
 	for (n = 0; n < ifnvsize; n++) {
-		if ((ifchan = reallocarray(ifchan, (n + 1) * 3,
-		    sizeof(*ifchan))) == NULL)
-			logexit(1, "reallocarray %zu", n);
+		/*
+		 * Open an interface channel with master, enclave and proxy, respectively
+		 */
 
-		/* ifchannel with master, enclave and proxy, respectively */
-		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, ifchan[(n * 3) + 0]) == -1)
-			logexit(1, "socketpair %zu 0", n * 3);
-		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, ifchan[(n * 3) + 1]) == -1)
-			logexit(1, "socketpair %zu 1", n * 3);
-		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, ifchan[(n * 3) + 2]) == -1)
-			logexit(1, "socketpair %zu 2", n * 3);
+		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
+			logexit(1, "socketpair ifnmast %zu", n);
+
+		ifnv[n]->mastwithifn = tmpchan[0];
+		ifnv[n]->ifnwithmast = tmpchan[1];
+
+		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
+			logexit(1, "socketpair ifnencl %zu", n);
+
+		ifnv[n]->enclwithifn = tmpchan[0];
+		ifnv[n]->ifnwithencl = tmpchan[1];
+
+		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
+			logexit(1, "socketpair ifnprox %zu", n);
+
+		ifnv[n]->proxwithifn = tmpchan[0];
+		ifnv[n]->ifnwithprox = tmpchan[1];
 
 		switch (fork()) {
 		case -1:
@@ -1528,17 +1583,16 @@ main(int argc, char **argv)
 				loginfox("%d", getpid());
 
 			for (m = 0; m <= n; m++) {
-				close(ifchan[(m * 3) + 0][0]);
-				close(ifchan[(m * 3) + 1][0]);
-				close(ifchan[(m * 3) + 2][0]);
+				close(ifnv[n]->mastwithifn);
+				close(ifnv[n]->enclwithifn);
+				close(ifnv[n]->proxwithifn);
 			}
 
 			assert(getdtablecount() == stdopen + 3);
 
 			eargs[0] = (char *)getprogname();
 			eargs[1] = "-I";
-			if (asprintf(&eargs[2], "%u", ifchan[(n * 3) + 0][1])
-			    < 1)
+			if (asprintf(&eargs[2], "%u", ifnv[n]->ifnwithmast) < 1)
 				logexitx(1, "asprintf");
 			/* don't bother to free before exec */
 			eargs[3] = NULL;
@@ -1547,23 +1601,36 @@ main(int argc, char **argv)
 		}
 
 		/* parent */
-		close(ifchan[(n * 3) + 0][1]);
-		close(ifchan[(n * 3) + 1][1]);
-		close(ifchan[(n * 3) + 2][1]);
+		close(ifnv[n]->ifnwithmast);
+		close(ifnv[n]->ifnwithencl);
+		close(ifnv[n]->ifnwithprox);
 
-		ifnv[n]->mastport = ifchan[(n * 3) + 0][0];
-		ifnv[n]->enclport = ifchan[(n * 3) + 1][0];
-		ifnv[n]->proxport = ifchan[(n * 3) + 2][0];
+		assert(getdtablecount() == stdopen + (int)(n + 1) * 3);
 	}
 
-	assert(getdtablecount() == stdopen + 3 * (int)ifnvsize);
+	/*
+	 * Setup channels between master, proxy and enclave.
+	 */
 
-	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, mastencl) == -1)
+	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
 		logexit(1, "socketpair");
-	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, mastprox) == -1)
+
+	mastwithencl = tmpchan[0];
+	enclwithmast = tmpchan[1];
+
+	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
 		logexit(1, "socketpair");
-	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, enclprox) == -1)
+
+	mastwithprox = tmpchan[0];
+	proxwithmast = tmpchan[1];
+
+	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
 		logexit(1, "socketpair");
+
+	enclwithprox = tmpchan[0];
+	proxwithencl = tmpchan[1];
+
+	assert(getdtablecount() == stdopen + 6 + (int)ifnvsize * 3);
 
 	/* fork enclave */
 	switch (fork()) {
@@ -1575,27 +1642,34 @@ main(int argc, char **argv)
 			loginfox("%d", getpid());
 
 		for (n = 0; n < ifnvsize; n++) {
-			close(ifnv[n]->mastport);
-			close(ifnv[n]->proxport);
+			close(ifnv[n]->mastwithifn);
+			close(ifnv[n]->proxwithifn);
 		}
 
-		close(mastprox[0]);
-		close(mastprox[1]);
-
-		close(mastencl[0]);
-		close(enclprox[0]);
+		close(mastwithprox);
+		close(mastwithencl);
+		close(proxwithmast);
+		close(proxwithencl);
 
 		assert(getdtablecount() == stdopen + 2 + (int)ifnvsize);
 
 		eargs[0] = (char *)getprogname();
 		eargs[1] = "-E";
-		if (asprintf(&eargs[2], "%d", mastencl[1]) < 1)
+		if (asprintf(&eargs[2], "%d", enclwithmast) < 1)
 			logexitx(1, "asprintf");
 		/* don't bother to free before exec */
 		eargs[3] = NULL;
 		execvpe(oldprogname, eargs, eenv);
 		logexit(1, "exec enclave");
 	}
+
+	close(enclwithmast);
+	close(enclwithprox);
+
+	for (n = 0; n < ifnvsize; n++)
+		close(ifnv[n]->enclwithifn);
+
+	assert(getdtablecount() == stdopen + 4 + (int)ifnvsize * 2);
 
 	/* fork proxy  */
 	switch (fork()) {
@@ -1606,22 +1680,17 @@ main(int argc, char **argv)
 		if (verbose > 1)
 			loginfox("%d", getpid());
 
-		for (n = 0; n < ifnvsize; n++) {
-			close(ifnv[n]->mastport);
-			close(ifnv[n]->enclport);
-		}
+		for (n = 0; n < ifnvsize; n++)
+			close(ifnv[n]->mastwithifn);
 
-		close(mastencl[0]);
-		close(mastencl[1]);
-
-		close(mastprox[0]);
-		close(enclprox[1]);
+		close(mastwithencl);
+		close(mastwithprox);
 
 		assert(getdtablecount() == stdopen + 2 + (int)ifnvsize);
 
 		eargs[0] = (char *)getprogname();
 		eargs[1] = "-P";
-		if (asprintf(&eargs[2], "%d", mastprox[1]) < 1)
+		if (asprintf(&eargs[2], "%d", proxwithmast) < 1)
 			logexitx(1, "asprintf");
 		/* don't bother to free before exec */
 		eargs[3] = NULL;
@@ -1629,50 +1698,30 @@ main(int argc, char **argv)
 		logexit(1, "exec proxy");
 	}
 
+	close(proxwithmast);
+	close(proxwithencl);
+
+	for (n = 0; n < ifnvsize; n++)
+		close(ifnv[n]->proxwithifn);
+
+	assert(getdtablecount() == stdopen + 2 + (int)ifnvsize);
+
 	setprogname("master");
 	if (verbose > 1)
 		loginfox("%d", getpid());
 
-	for (n = 0; n < ifnvsize; n++) {
-		close(ifnv[n]->enclport);
-		close(ifnv[n]->proxport);
-	}
-
-	close(mastencl[1]);
-	close(mastprox[1]);
-	close(enclprox[0]);
-	close(enclprox[1]);
-
-	assert(getdtablecount() == stdopen + 2 + (int)ifnvsize);
-
-	if (verbose > 1) {
-		loginfox("enclave %d:%d", mastencl[0], mastencl[1]);
-		loginfox("proxy %d:%d", mastprox[0], mastprox[1]);
-
-		for (n = 0; n < ifnvsize; n++) {
-			loginfox("%s %d %d %d, %d %d %d", ifnv[n]->ifname,
-			    ifnv[n]->mastport,
-			    ifnv[n]->enclport,
-			    ifnv[n]->proxport,
-			    ifchan[(n * 3) + 0][1],
-			    ifchan[(n * 3) + 1][1],
-			    ifchan[(n * 3) + 2][1]);
-		}
-	}
+	if (verbose > 1)
+		printdescriptors();
 
 	/*
 	 *   3. send startup info to processes
 	 */
 
-	sendconfig_enclave(mastencl[0], enclprox[1]);
-	sendconfig_proxy(mastprox[0], enclprox[0]);
+	sendconfig_enclave(mastwithencl, enclwithprox);
+	sendconfig_proxy(mastwithprox, proxwithencl);
 
-	for (n = 0; n < ifnvsize; n++) {
-		sendconfig_ifn(n,
-		    ifnv[n]->mastport,
-		    ifchan[(n * 3) + 1][1],
-		    ifchan[(n * 3) + 2][1]);
-	}
+	for (n = 0; n < ifnvsize; n++)
+		sendconfig_ifn(n);
 
 	/*
 	 *   4. reexec and idle
@@ -1690,16 +1739,16 @@ main(int argc, char **argv)
 	 */
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, mastmast) == -1)
 		logexit(1, "socketpair mastermaster");
-	if (writen(mastmast[0], &mastencl[0], sizeof(int)) != 0)
+	if (writen(mastmast[0], &mastwithencl, sizeof(int)) != 0)
 		logexit(1, "could not write enclave descriptor to new master");
-	if (writen(mastmast[0], &mastprox[0], sizeof(int)) != 0)
+	if (writen(mastmast[0], &mastwithprox, sizeof(int)) != 0)
 		logexit(1, "could not write proxy descriptor to new master");
 	if (writen(mastmast[0], &ifnvsize, sizeof(ifnvsize)) != 0)
 		logexit(1, "could not write ifnvsize to new master");
 	for (n = 0; n < ifnvsize; n++) {
-		if (writen(mastmast[0], &ifchan[(n * 3) + 0][0], sizeof(int))
-		    != 0)
-			logexit(1, "could not ifn descriptor to new master");
+		if (writen(mastmast[0], &ifnv[n]->mastwithifn, sizeof(int)) != 0)
+			logexit(1, "could not pass ifn descriptor to new "
+			    "master");
 	}
 	close(mastmast[0]);
 
@@ -1723,8 +1772,12 @@ master_printinfo(FILE *fp)
 	for (n = 0; n < ifnvsize; n++) {
 		ifn = ifnv[n];
 		fprintf(fp, "ifn %zu\n", n);
-		fprintf(fp, "enclport %d\n", ifn->enclport);
-		fprintf(fp, "proxport %d\n", ifn->proxport);
+		fprintf(fp, "mastwithifn %d\n", ifn->mastwithifn);
+		fprintf(fp, "ifnwithmast %d\n", ifn->ifnwithmast);
+		fprintf(fp, "enclwithifn %d\n", ifn->enclwithifn);
+		fprintf(fp, "ifnwithencl %d\n", ifn->ifnwithencl);
+		fprintf(fp, "proxwithifn %d\n", ifn->proxwithifn);
+		fprintf(fp, "ifnwithprox %d\n", ifn->ifnwithprox);
 		fprintf(fp, "ifname %s\n", ifn->ifname);
 		fprintf(fp, "pubkey\n");
 		hexdump(fp, ifn->pubkey, sizeof(ifn->pubkey), sizeof(ifn->pubkey));
