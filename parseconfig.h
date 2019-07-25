@@ -108,4 +108,9 @@ char **);
  */
 void processconfig(void);
 
+void sendconfig_proxy(union smsg, int, int);
+void sendconfig_ifn(union smsg, int);
+void sendconfig_enclave(union smsg, int, int);
+void signal_eos(union smsg, int);
+
 #endif /* PARSECONFIG_H */

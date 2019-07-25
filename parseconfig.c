@@ -942,3 +942,300 @@ processconfig(void)
 		}
 	}
 }
+
+/*
+ * Send interface info to the proxy.
+ *
+ * "mast2prox" is used to send the config from this process to the proxy
+ * process.
+ * "proxwithencl" is the descriptor the proxy process must use to communicate
+ * with the enclave.
+ *
+ * The descriptors the proxy process must use to communicate with
+ * each ifn process are in each ifn structure.
+ *
+ * SINIT
+ * SIFN
+ *
+ * Exit on error.
+ */
+void
+sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
+{
+	struct ifn *ifn;
+	struct sockaddr_storage *listenaddr;
+	size_t m, n;
+
+	memset(&smsg.init, 0, sizeof(smsg.init));
+
+	smsg.init.background = background;
+	smsg.init.verbose = verbose;
+	smsg.init.uid = guid;
+	smsg.init.gid = ggid;
+	smsg.init.enclport = proxwithencl;
+	smsg.init.nifns = ifnvsize;
+
+	if (wire_sendmsg(mast2prox, SINIT, &smsg.init, sizeof(smsg.init)) == -1)
+		logexitx(1, "%s wire_sendmsg SINIT", __func__);
+
+	for (n = 0; n < ifnvsize; n++) {
+		ifn = ifnv[n];
+
+		memset(&smsg.ifn, 0, sizeof(smsg.ifn));
+
+		smsg.ifn.ifnid = n;
+		smsg.ifn.ifnport = ifn->proxwithifn;
+		smsg.ifn.nlistenaddrs = ifn->listenaddrssize;
+		snprintf(smsg.ifn.ifname, sizeof(smsg.ifn.ifname), "%s",
+		    ifn->ifname);
+		/* don't send interface description to proxy, no public keys in
+		 * the proxy process has small benefits because they're
+		 * semi-trusted in wireguard.
+		 */
+		memcpy(smsg.ifn.mac1key, ifn->mac1key,
+		    sizeof(smsg.ifn.mac1key));
+		memcpy(smsg.ifn.cookiekey, ifn->cookiekey,
+		    sizeof(smsg.ifn.cookiekey));
+		smsg.ifn.npeers = ifn->peerssize;
+
+		if (wire_sendmsg(mast2prox, SIFN, &smsg.ifn, sizeof(smsg.ifn))
+		    == -1)
+			logexitx(1, "%s wire_sendmsg SIFN", __func__);
+
+		/* send listen addresses */
+		for (m = 0; m < ifn->listenaddrssize; m++) {
+			listenaddr = ifn->listenaddrs[m];
+
+			memset(&smsg.cidraddr, 0, sizeof(smsg.cidraddr));
+
+			smsg.cidraddr.ifnid = n;
+			memcpy(&smsg.cidraddr.addr, listenaddr,
+			    sizeof(smsg.cidraddr.addr));
+
+			if (wire_sendmsg(mast2prox, SCIDRADDR, &smsg.cidraddr,
+			    sizeof(smsg.cidraddr)) == -1)
+				logexitx(1, "%s wire_sendmsg SCIDRADDR", __func__);
+		}
+	}
+
+	/* wait with end of startup signal */
+
+	explicit_bzero(&smsg, sizeof(smsg));
+
+	loginfox("config sent to proxy %d", mast2prox);
+}
+
+/*
+ * Send interface info to the enclave.
+ *
+ * SINIT
+ * SIFN
+ * SPEER
+ *
+ * Exit on error.
+ */
+void
+sendconfig_enclave(union smsg smsg, int mast2encl, int enclwithprox)
+{
+	struct ifn *ifn;
+	struct peer *peer;
+	size_t n, m;
+
+	memset(&smsg.init, 0, sizeof(smsg.init));
+
+	smsg.init.background = background;
+	smsg.init.verbose = verbose;
+	smsg.init.uid = guid;
+	smsg.init.gid = ggid;
+	smsg.init.proxport = enclwithprox;
+	smsg.init.nifns = ifnvsize;
+
+	if (wire_sendmsg(mast2encl, SINIT, &smsg.init, sizeof(smsg.init)) == -1)
+		logexitx(1, "%s wire_sendmsg SINIT", __func__);
+
+	for (n = 0; n < ifnvsize; n++) {
+		ifn = ifnv[n];
+
+		memset(&smsg.ifn, 0, sizeof(smsg.ifn));
+
+		smsg.ifn.ifnid = n;
+		smsg.ifn.ifnport = ifn->enclwithifn;
+		snprintf(smsg.ifn.ifname, sizeof(smsg.ifn.ifname), "%s", ifn->ifname);
+		if (ifn->ifdesc && strlen(ifn->ifdesc) > 0)
+			snprintf(smsg.ifn.ifdesc, sizeof(smsg.ifn.ifdesc), "%s", ifn->ifdesc);
+		memcpy(smsg.ifn.privkey, ifn->privkey, sizeof(smsg.ifn.privkey));
+		memcpy(smsg.ifn.pubkey, ifn->pubkey, sizeof(smsg.ifn.pubkey));
+		memcpy(smsg.ifn.pubkeyhash, ifn->pubkeyhash, sizeof(smsg.ifn.pubkeyhash));
+		memcpy(smsg.ifn.mac1key, ifn->mac1key, sizeof(smsg.ifn.mac1key));
+		memcpy(smsg.ifn.cookiekey, ifn->cookiekey, sizeof(smsg.ifn.cookiekey));
+		smsg.ifn.npeers = ifn->peerssize;
+
+		if (wire_sendmsg(mast2encl, SIFN, &smsg.ifn, sizeof(smsg.ifn)) == -1)
+			logexitx(1, "%s wire_sendmsg SIFN", __func__);
+
+		for (m = 0; m < ifn->peerssize; m++) {
+			peer = ifn->peers[m];
+
+			memset(&smsg.peer, 0, sizeof(smsg.peer));
+
+			smsg.peer.ifnid = n;
+			smsg.peer.peerid = m;
+
+			if (memcmp(peer->psk, nullkey, sizeof(wskey)) == 0)
+				memcpy(peer->psk, ifn->psk, sizeof(wskey));
+
+			memcpy(smsg.peer.psk, peer->psk, sizeof(smsg.peer.psk));
+			memcpy(smsg.peer.peerkey, peer->pubkey,
+			    sizeof(smsg.peer.peerkey));
+			memcpy(smsg.peer.mac1key, peer->mac1key,
+			    sizeof(smsg.peer.mac1key));
+
+			if (wire_sendmsg(mast2encl, SPEER, &smsg.peer,
+			    sizeof(smsg.peer)) == -1)
+				logexitx(1, "%s wire_sendmsg SPEER", __func__);
+		}
+	}
+
+	/* wait with end of startup signal */
+
+	explicit_bzero(&smsg, sizeof(smsg));
+
+	loginfox("config sent to enclave %d", mast2encl);
+}
+
+/*
+ * Send interface info to an ifn process.
+ *
+ * SINIT
+ * SIFN
+ * SPEER
+ * SCIDRADDR
+ *
+ * Exit on error.
+ */
+void
+sendconfig_ifn(union smsg smsg, int ifnid)
+{
+	struct cidraddr *allowedip;
+	struct cidraddr *ifaddr;
+	struct sockaddr_storage *listenaddr;
+	struct ifn *ifn;
+	struct peer *peer;
+	size_t m, n;
+
+	if (ifnid < 0)
+		logexitx(1, "%s", __func__);
+	if ((size_t)ifnid >= ifnvsize)
+		logexitx(1, "%s", __func__);
+
+	ifn = ifnv[ifnid];
+
+	memset(&smsg.init, 0, sizeof(smsg.init));
+
+	smsg.init.background = background;
+	smsg.init.verbose = verbose;
+	smsg.init.uid = ifn->uid;
+	smsg.init.gid = ifn->gid;
+	smsg.init.enclport = ifn->ifnwithencl;
+	smsg.init.proxport = ifn->ifnwithprox;
+
+	if (wire_sendmsg(ifn->mastwithifn, SINIT, &smsg.init, sizeof(smsg.init)) == -1)
+		logexitx(1, "%s wire_sendmsg SINIT %d", __func__, ifn->mastwithifn);
+
+	memset(&smsg.ifn, 0, sizeof(smsg.ifn));
+
+	smsg.ifn.ifnid = ifnid;
+	snprintf(smsg.ifn.ifname, sizeof(smsg.ifn.ifname), "%s", ifn->ifname);
+	if (ifn->ifdesc && strlen(ifn->ifdesc) > 0)
+		snprintf(smsg.ifn.ifdesc, sizeof(smsg.ifn.ifdesc), "%s", ifn->ifdesc);
+	memcpy(smsg.ifn.mac1key, ifn->mac1key, sizeof(smsg.ifn.mac1key));
+	memcpy(smsg.ifn.cookiekey, ifn->cookiekey, sizeof(smsg.ifn.cookiekey));
+	smsg.ifn.nifaddrs = ifn->ifaddrssize;
+	smsg.ifn.nlistenaddrs = ifn->listenaddrssize;
+	smsg.ifn.npeers = ifn->peerssize;
+
+	if (wire_sendmsg(ifn->mastwithifn, SIFN, &smsg.ifn, sizeof(smsg.ifn)) == -1)
+		logexitx(1, "%s wire_sendmsg SIFN %s", __func__, ifn->ifname);
+
+	/* first send interface addresses */
+	for (n = 0; n < ifn->ifaddrssize; n++) {
+		ifaddr = ifn->ifaddrs[n];
+
+		memset(&smsg.cidraddr, 0, sizeof(smsg.cidraddr));
+
+		smsg.cidraddr.ifnid = ifnid;
+		smsg.cidraddr.prefixlen = ifaddr->prefixlen;
+		memcpy(&smsg.cidraddr.addr, &ifaddr->addr,
+		    sizeof(smsg.cidraddr.addr));
+
+		if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
+		    sizeof(smsg.cidraddr)) == -1)
+			logexitx(1, "%s wire_sendmsg SCIDRADDR", __func__);
+	}
+
+	/* then listen addresses */
+	for (n = 0; n < ifn->listenaddrssize; n++) {
+		listenaddr = ifn->listenaddrs[n];
+
+		memset(&smsg.cidraddr, 0, sizeof(smsg.cidraddr));
+
+		smsg.cidraddr.ifnid = ifnid;
+		memcpy(&smsg.cidraddr.addr, listenaddr,
+		    sizeof(smsg.cidraddr.addr));
+
+		if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
+		    sizeof(smsg.cidraddr)) == -1)
+			logexitx(1, "%s wire_sendmsg SCIDRADDR", __func__);
+	}
+
+	/* at last send the peers */
+	for (m = 0; m < ifn->peerssize; m++) {
+		peer = ifn->peers[m];
+
+		memset(&smsg.peer, 0, sizeof(smsg.peer));
+
+		smsg.peer.ifnid = ifnid;
+		smsg.peer.peerid = m;
+		snprintf(smsg.peer.name, sizeof(smsg.peer.name), "%s", peer->name);
+		smsg.peer.nallowedips = peer->allowedipssize;
+		memcpy(&smsg.peer.fsa, &peer->fsa, sizeof(smsg.peer.fsa));
+
+		if (wire_sendmsg(ifn->mastwithifn, SPEER, &smsg.peer, sizeof(smsg.peer))
+		    == -1)
+			logexitx(1, "wire_sendmsg SPEER %zu", m);
+
+		for (n = 0; n < peer->allowedipssize; n++) {
+			allowedip = peer->allowedips[n];
+
+			memset(&smsg.cidraddr, 0, sizeof(smsg.cidraddr));
+
+			smsg.cidraddr.ifnid = ifnid;
+			smsg.cidraddr.peerid = m;
+			smsg.cidraddr.prefixlen = allowedip->prefixlen;
+			memcpy(&smsg.cidraddr.addr, &allowedip->addr,
+			    sizeof(smsg.cidraddr.addr));
+
+			if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
+			    sizeof(smsg.cidraddr)) == -1)
+				logexitx(1, "wire_sendmsg SCIDRADDR");
+		}
+	}
+
+	/* wait with end of startup signal */
+
+	explicit_bzero(&smsg, sizeof(smsg));
+
+	loginfox("config sent to %s %d", ifn->ifname, ifn->mastwithifn);
+}
+
+/*
+ * Signal end of configuration.
+ */
+void
+signal_eos(union smsg smsg, int mastport)
+{
+	memset(&smsg, 0, sizeof(smsg));
+
+	if (wire_sendmsg(mastport, SEOS, &smsg.eos, sizeof(smsg.eos)) == -1)
+		logexitx(1, "%s wire_sendmsg SEOS %d", __func__, mastport);
+}
