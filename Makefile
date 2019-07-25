@@ -37,16 +37,16 @@ parseconfig.o: parseconfig.c parseconfig.h
 util.o: util.c util.h
 	${CC} ${CFLAGS} -c util.c
 
-enclave.o: enclave.c
+enclave.o: enclave.c wiresep.h wireprot.h util.h
 	${CC} ${CFLAGS} -c enclave.c
 
 wireprot.o: wireprot.c wireprot.h
 	${CC} ${CFLAGS} -c wireprot.c
 
-ifn.o: ifn.c
+ifn.o: ifn.c wireprot.h util.h
 	${CC} ${CFLAGS} -c ifn.c
 
-proxy.o: proxy.c
+proxy.o: proxy.c wiresep.h wireprot.h util.h
 	${CC} ${CFLAGS} -c proxy.c
 
 blake2s-ref.o: blake2s-ref.c blake2-impl.h blake2.h
