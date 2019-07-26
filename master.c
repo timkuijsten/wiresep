@@ -50,7 +50,7 @@ static char *configfile;
 static uid_t guid;
 static gid_t ggid;
 
-static struct ifn **ifnv;
+static struct cfgifn **ifnv;
 static size_t ifnvsize;
 
 static union smsg smsg;
@@ -509,8 +509,8 @@ main(int argc, char **argv)
 void
 master_printinfo(FILE *fp)
 {
-	struct ifn *ifn;
-	struct peer *peer;
+	struct cfgifn *ifn;
+	struct cfgpeer *peer;
 	size_t n, m;
 
 	for (n = 0; n < ifnvsize; n++) {

@@ -30,17 +30,17 @@
 /* these are used by the other modules as well */
 int background, verbose;
 
-struct cidraddr {
+struct cfgcidraddr {
 	struct sockaddr_storage addr;
 	size_t prefixlen;
 };
 
-struct peer {
+struct cfgpeer {
 	wskey psk;
 	wskey pubkey;
 	wskey mac1key;
 	struct sockaddr_storage fsa;	/* rename to endpoint */
-	struct cidraddr **allowedips;
+	struct cfgcidraddr **allowedips;
 	size_t allowedipssize;
 	char name[MAXPEERNAME + 1];
 };
@@ -52,7 +52,7 @@ struct peer {
  * mac1key	= Hash(Label-Mac1 || Spubm)
  * cookiekey	= Hash(Label-Cookie || Spubm)
  */
-struct ifn {
+struct cfgifn {
 	struct scfge *scfge;	/* original user config data */
 	int ifnwithmast;	/* Read/write descriptor the ifn process uses
 				 * for communication with the master process.
@@ -66,7 +66,7 @@ struct ifn {
 	int proxwithifn;
 	char *ifname; /* nul terminated name of the interface */
 	char *ifdesc; /* nul terminated label for the interface */
-	struct cidraddr **ifaddrs;
+	struct cfgcidraddr **ifaddrs;
 	size_t ifaddrssize;
 	struct sockaddr_storage **listenaddrs;
 	size_t listenaddrssize;
@@ -76,7 +76,7 @@ struct ifn {
 	wskey pubkeyhash;
 	wskey mac1key;
 	wskey cookiekey;
-	struct peer **peers;
+	struct cfgpeer **peers;
 	size_t peerssize;
 	uid_t uid;
 	gid_t gid;
@@ -101,11 +101,11 @@ union smsg {
  * Exit on error.
  */
 
-void xparseconfigfd(int, struct ifn ***, size_t *, uid_t *, gid_t *,
+void xparseconfigfd(int, struct cfgifn ***, size_t *, uid_t *, gid_t *,
     char **);
 
 /* wrapper around xparseconfigfd */
-void xparseconfigfile(const char *, struct ifn ***, size_t *, uid_t *, gid_t *,
+void xparseconfigfile(const char *, struct cfgifn ***, size_t *, uid_t *, gid_t *,
     char **);
 
 /*

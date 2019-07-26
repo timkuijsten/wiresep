@@ -42,7 +42,7 @@ static int logfacility;
 
 static const wskey nullkey;
 
-static struct ifn **ifnv;
+static struct cfgifn **ifnv;
 static size_t ifnvsize;
 
 /*
@@ -179,9 +179,9 @@ parsekey(wskey dst, const char *src, size_t srcsize)
  * Return 0 on success, -1 on error.
  */
 static int
-parsepeerconfig(struct peer *peer, const struct scfge *cfg, int peernumber)
+parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber)
 {
-	struct cidraddr *allowedip;
+	struct cfgcidraddr *allowedip;
 	struct scfge *subcfg;
 	const char *key, *peerid;
 	size_t i, j;
@@ -358,9 +358,9 @@ static int
 parseinterfaceconfigs(void)
 {
 	struct scfge *subcfg;
-	struct ifn *ifn;
-	struct peer *peer;
-	struct cidraddr *ifaddr;
+	struct cfgifn *ifn;
+	struct cfgpeer *peer;
+	struct cfgcidraddr *ifaddr;
 	struct sockaddr_storage *listenaddr;
 	struct stat st;
 	struct sockaddr_in6 *sin6;
@@ -703,7 +703,7 @@ static int
 parseglobalconfig(const struct scfge *root)
 {
 	struct scfge *subcfg;
-	struct ifn *ifn;
+	struct cfgifn *ifn;
 	const char *key;
 	size_t n;
 	int e;
@@ -903,7 +903,7 @@ isfdsafe(int fd)
  * Exit on error.
  */
 void
-xparseconfigfd(int fd, struct ifn ***rifnv, size_t *rifnvsize,
+xparseconfigfd(int fd, struct cfgifn ***rifnv, size_t *rifnvsize,
     uid_t *unprivuid, gid_t *unprivgid, char **rlogfacilitystr)
 {
 	yyd = fd;
@@ -934,7 +934,7 @@ xparseconfigfd(int fd, struct ifn ***rifnv, size_t *rifnvsize,
  * Exit on error.
  */
 void
-xparseconfigfile(const char *filename, struct ifn ***rifnv, size_t *rifnvsize,
+xparseconfigfile(const char *filename, struct cfgifn ***rifnv, size_t *rifnvsize,
     uid_t *unprivuid, gid_t *unprivgid, char **rlogfacilitystr)
 {
 	int fd;
@@ -958,7 +958,7 @@ xparseconfigfile(const char *filename, struct ifn ***rifnv, size_t *rifnvsize,
 void
 processconfig(void)
 {
-	struct peer *peer;
+	struct cfgpeer *peer;
 	size_t n, m;
 
 	for (n = 0; n < ifnvsize; n++) {
@@ -996,7 +996,7 @@ processconfig(void)
 void
 sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
 {
-	struct ifn *ifn;
+	struct cfgifn *ifn;
 	struct sockaddr_storage *listenaddr;
 	size_t m, n;
 
@@ -1071,8 +1071,8 @@ sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
 void
 sendconfig_enclave(union smsg smsg, int mast2encl, int enclwithprox)
 {
-	struct ifn *ifn;
-	struct peer *peer;
+	struct cfgifn *ifn;
+	struct cfgpeer *peer;
 	size_t n, m;
 
 	memset(&smsg.init, 0, sizeof(smsg.init));
@@ -1150,11 +1150,11 @@ sendconfig_enclave(union smsg smsg, int mast2encl, int enclwithprox)
 void
 sendconfig_ifn(union smsg smsg, int ifnid)
 {
-	struct cidraddr *allowedip;
-	struct cidraddr *ifaddr;
+	struct cfgcidraddr *allowedip;
+	struct cfgcidraddr *ifaddr;
 	struct sockaddr_storage *listenaddr;
-	struct ifn *ifn;
-	struct peer *peer;
+	struct cfgifn *ifn;
+	struct cfgpeer *peer;
 	size_t m, n;
 
 	if (ifnid < 0)
