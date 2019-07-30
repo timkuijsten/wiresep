@@ -771,17 +771,28 @@ parseglobalconfig(const struct scfge *root)
 				e = 1;
 				continue;
 			}
+			if (guser) {
+				warnx("global user can be set only once");
+				e = 1;
+				continue;
+			}
 			if (resolveuser(&guid, &ggid, subcfg->strv[1]) == -1) {
 				warnx("%s: %s invalid: %s",
 				    "global", key, subcfg->strv[1]);
 				e = 1;
 				continue;
 			}
+			guser = "SET";
 		} else if (strcasecmp("group", key) == 0) {
 			if (subcfg->strvsize != 2) {
 				warnx("%s: %s must contain one name "
 				    "or gid",
 				    "global", key);
+				e = 1;
+				continue;
+			}
+			if (ggroup != NULL) {
+				warnx("global group can be set only once");
 				e = 1;
 				continue;
 			}
@@ -792,32 +803,7 @@ parseglobalconfig(const struct scfge *root)
 				e = 1;
 				continue;
 			}
-		} else if (strcasecmp("user", key) == 0) {
-			if (subcfg->strvsize != 2) {
-				warnx("user must have one name or id");
-				e = 1;
-				continue;
-			}
-			if (guser) {
-				warnx("global user can be set only once");
-				e = 1;
-				continue;
-			}
-			if ((guser = strdup(subcfg->strv[1])) == NULL)
-				err(1, "strdup");
-		} else if (strcasecmp("group", key) == 0) {
-			if (subcfg->strvsize != 2) {
-				warnx("group must have one name or id");
-				e = 1;
-				continue;
-			}
-			if (ggroup) {
-				warnx("global group can be set only once");
-				e = 1;
-				continue;
-			}
-			if ((ggroup = strdup(subcfg->strv[1])) == NULL)
-				err(1, "strdup");
+			ggroup = "SET";
 		} else if (strcasecmp("psk", key) == 0) {
 			if (subcfg->strvsize != 2) {
 				warnx("psk must have one value");
