@@ -904,15 +904,20 @@ xparseconfigfd(int fd, struct cfgifn ***rifnv, size_t *rifnvsize,
     uid_t *unprivuid, gid_t *unprivgid, char **rlogfacilitystr)
 {
 	yyd = fd;
+	int e;
 
 	if (yyparse() != 0)
 		errx(1, "%s: yyparse", __func__);
 
+	e = 0;
 	if (parseglobalconfig(scfg) == -1)
-		errx(1, NULL);
+		e = 1;
 
 	if (parseinterfaceconfigs() == -1)
-		errx(1, NULL);
+		e = 1;
+
+	if (e)
+		exit(1);
 
 	scfg_clear();
 
