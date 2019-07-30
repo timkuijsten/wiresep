@@ -848,32 +848,6 @@ parseglobalconfig(const struct scfge *root)
 }
 
 /*
- * Make sure the given file descriptor belongs to a regular file, that is owned
- * by the superuser and can only be read or modified by the owner or group.
- *
- * Return 1 if the fd is safe, 0 otherwise.
- */
-static int
-isfdsafe(int fd)
-{
-	struct stat st;
-
-	if (fstat(fd, &st) == -1)
-		return 0;
-
-	if (st.st_uid != 0)
-		return 0;
-
-	if (!S_ISREG(st.st_mode))
-		return 0;
-
-	if ((st.st_mode & S_IRWXO) != 0)
-		return 0;
-
-	return 1;
-}
-
-/*
  * Read a config from a file-descriptor and parse it. On success, the result is
  * stored in "rifnv", "rifnvsize", "unprivuid", "unprivgid" and
  * "rlogfacilitystr".
