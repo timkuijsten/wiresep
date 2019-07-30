@@ -21,6 +21,7 @@
 #include <err.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <openssl/curve25519.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -41,6 +42,7 @@ static const char *logfacilitystr = "daemon";
 static int logfacility;
 
 static const wskey nullkey;
+static const wskey basepoint = {9};
 
 static struct cfgifn **ifnv;
 static size_t ifnvsize;
@@ -531,17 +533,11 @@ parseinterfaceconfigs(void)
 					e = 1;
 					continue;
 				}
-			} else if (strcasecmp("pubkey", key) == 0) {
-				if (subcfg->strvsize != 2) {
-					warnx("%s: %s must have a value",
-					    ifn->ifname, key);
-					e = 1;
-					continue;
-				}
-				if (parsekey(ifn->pubkey, subcfg->strv[1],
-				    strlen(subcfg->strv[1])) == -1) {
-					warnx("%s: %s could not parse the "
-					    "interface public key", ifn->ifname,
+				if (X25519(ifn->pubkey, ifn->privkey, basepoint)
+				    == 0) {
+					warnx("%s: %s could determine the "
+					    "interface public key from this "
+					    "private key", ifn->ifname,
 					    key);
 					e = 1;
 					continue;

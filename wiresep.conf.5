@@ -93,9 +93,6 @@ Multiple address and port combinations may be configured.
 This setting is required.
 .It Ic privkey Ar key
 The private key of this interface.
-.It Ic pubkey Ar key
-The public key accompanying
-.Ar privkey .
 .It Ic peer Oo Ar name Oc Brq ...
 A peer with an optional
 .Ar name
@@ -149,7 +146,6 @@ interface tun5 {
 	listen 198.51.100.7:1234
 
 	privkey f5tK/SyL1G599SrSLPlul0Z4DFgqMglUrebRH7hSAZs=
-	pubkey ErOyQKEbYQx/nFSiCFY+lDCe/3LfJ/v8UiHFpnvpo3Q=
 
 	# override global uid
 	user 1200
