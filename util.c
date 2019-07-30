@@ -919,13 +919,14 @@ logdebugx(const char *msg, ...)
 }
 
 /*
- * Make sure the given file descriptor belongs to a regular file, that is owned
- * by the superuser and can only be read or modified by the owner or group.
+ * Make sure the given file descriptor belongs to a regular file, that it is
+ * owned by the superuser and that the permissions are a subset of
+ * "maxpermissions".
  *
  * Return 1 if the fd is safe, 0 otherwise.
  */
 int
-isfdsafe(int fd)
+isfdsafe(int fd, mode_t maxpermissions)
 {
 	struct stat st;
 
@@ -938,7 +939,9 @@ isfdsafe(int fd)
 	if (!S_ISREG(st.st_mode))
 		return 0;
 
-	if ((st.st_mode & S_IRWXO) != 0)
+	maxpermissions += S_IFREG;
+
+	if ((st.st_mode & ~maxpermissions) != 0)
 		return 0;
 
 	return 1;

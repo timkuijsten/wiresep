@@ -905,7 +905,7 @@ xparseconfigfile(const char *filename, struct cfgifn ***rifnv,
 	if ((fd = open(filename, O_RDONLY|O_CLOEXEC)) == -1)
 		err(1, "%s", filename);
 
-	if (!isfdsafe(fd))
+	if (!isfdsafe(fd, 0660))
 		errx(1, "%s: must be owned by the superuser and may only be"
 		    " readable or writable by the owner or group", filename);
 

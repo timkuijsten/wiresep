@@ -53,6 +53,6 @@ void loginfo(const char *, ...);
 void loginfox(const char *, ...);
 void logdebug(const char *, ...);
 void logdebugx(const char *, ...);
-int isfdsafe(int);
+int isfdsafe(int, mode_t);
 
 #endif /* UTIL_H */
