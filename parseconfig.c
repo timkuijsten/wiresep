@@ -52,7 +52,8 @@ static size_t ifnvsize;
 static void
 xaddone(void ***arr, size_t *curmemcount, void **member, size_t membersize)
 {
-	*arr = recallocarray(*arr, *curmemcount, *curmemcount + 1, sizeof(char *));
+	*arr = recallocarray(*arr, *curmemcount, *curmemcount + 1,
+	    sizeof(char *));
 	if (*arr == NULL)
 		err(1, "%s recallocarray", __func__);
 	if ((*member = calloc(1, membersize)) == NULL)
@@ -327,8 +328,8 @@ parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber)
 				continue;
 			}
 		} else {
-			warnx("%s: %s invalid keyword in the peer specific "
-			    "scope", peerid, key);
+			warnx("%s: %s invalid keyword in peer scope", peerid,
+			    key);
 			e = 1;
 		}
 	}
@@ -493,8 +494,9 @@ parseinterfaceconfigs(void)
 					    &ifaddr->prefixlen,
 					    subcfg->strv[j]) == -1) {
 						warnx("%s: %s could not "
-						    "parse interface address: %s",
-						    ifn->ifname, key, subcfg->strv[j]);
+						    "parse interface address: "
+						    "%s", ifn->ifname, key,
+						    subcfg->strv[j]);
 						e = 1;
 						continue;
 					}
@@ -601,9 +603,8 @@ parseinterfaceconfigs(void)
 					memcpy(peer->psk, ifnv[n]->psk,
 					    sizeof(wskey));
 			} else {
-				warnx("%s: %s invalid keyword in the interface"
-				    " specific scope",
-				    ifn->ifname, key);
+				warnx("%s: %s invalid keyword in interface "
+				    "scope", ifn->ifname, key);
 				e = 1;
 			}
 		}
@@ -934,8 +935,9 @@ xparseconfigfd(int fd, struct cfgifn ***rifnv, size_t *rifnvsize,
  * Exit on error.
  */
 void
-xparseconfigfile(const char *filename, struct cfgifn ***rifnv, size_t *rifnvsize,
-    uid_t *unprivuid, gid_t *unprivgid, char **rlogfacilitystr)
+xparseconfigfile(const char *filename, struct cfgifn ***rifnv,
+    size_t *rifnvsize, uid_t *unprivuid, gid_t *unprivgid,
+    char **rlogfacilitystr)
 {
 	int fd;
 
@@ -946,7 +948,8 @@ xparseconfigfile(const char *filename, struct cfgifn ***rifnv, size_t *rifnvsize
 		errx(1, "%s: must be owned by the superuser and may only be"
 		    " readable or writable by the owner or group", filename);
 
-	xparseconfigfd(fd, rifnv, rifnvsize, unprivuid, unprivgid, rlogfacilitystr);
+	xparseconfigfd(fd, rifnv, rifnvsize, unprivuid, unprivgid,
+	    rlogfacilitystr);
 
 	if (close(fd) == -1)
 		err(1, "close %s", filename);
@@ -1048,7 +1051,8 @@ sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
 
 			if (wire_sendmsg(mast2prox, SCIDRADDR, &smsg.cidraddr,
 			    sizeof(smsg.cidraddr)) == -1)
-				logexitx(1, "%s wire_sendmsg SCIDRADDR", __func__);
+				logexitx(1, "%s wire_sendmsg SCIDRADDR",
+				    __func__);
 		}
 	}
 
@@ -1094,17 +1098,24 @@ sendconfig_enclave(union smsg smsg, int mast2encl, int enclwithprox)
 
 		smsg.ifn.ifnid = n;
 		smsg.ifn.ifnport = ifn->enclwithifn;
-		snprintf(smsg.ifn.ifname, sizeof(smsg.ifn.ifname), "%s", ifn->ifname);
+		snprintf(smsg.ifn.ifname, sizeof(smsg.ifn.ifname), "%s",
+		    ifn->ifname);
 		if (ifn->ifdesc && strlen(ifn->ifdesc) > 0)
-			snprintf(smsg.ifn.ifdesc, sizeof(smsg.ifn.ifdesc), "%s", ifn->ifdesc);
-		memcpy(smsg.ifn.privkey, ifn->privkey, sizeof(smsg.ifn.privkey));
+			snprintf(smsg.ifn.ifdesc, sizeof(smsg.ifn.ifdesc), "%s",
+			    ifn->ifdesc);
+		memcpy(smsg.ifn.privkey, ifn->privkey,
+		    sizeof(smsg.ifn.privkey));
 		memcpy(smsg.ifn.pubkey, ifn->pubkey, sizeof(smsg.ifn.pubkey));
-		memcpy(smsg.ifn.pubkeyhash, ifn->pubkeyhash, sizeof(smsg.ifn.pubkeyhash));
-		memcpy(smsg.ifn.mac1key, ifn->mac1key, sizeof(smsg.ifn.mac1key));
-		memcpy(smsg.ifn.cookiekey, ifn->cookiekey, sizeof(smsg.ifn.cookiekey));
+		memcpy(smsg.ifn.pubkeyhash, ifn->pubkeyhash,
+		    sizeof(smsg.ifn.pubkeyhash));
+		memcpy(smsg.ifn.mac1key, ifn->mac1key,
+		    sizeof(smsg.ifn.mac1key));
+		memcpy(smsg.ifn.cookiekey, ifn->cookiekey,
+		    sizeof(smsg.ifn.cookiekey));
 		smsg.ifn.npeers = ifn->peerssize;
 
-		if (wire_sendmsg(mast2encl, SIFN, &smsg.ifn, sizeof(smsg.ifn)) == -1)
+		if (wire_sendmsg(mast2encl, SIFN, &smsg.ifn, sizeof(smsg.ifn))
+		    == -1)
 			logexitx(1, "%s wire_sendmsg SIFN", __func__);
 
 		for (m = 0; m < ifn->peerssize; m++) {
@@ -1126,7 +1137,8 @@ sendconfig_enclave(union smsg smsg, int mast2encl, int enclwithprox)
 
 			if (wire_sendmsg(mast2encl, SPEER, &smsg.peer,
 			    sizeof(smsg.peer)) == -1)
-				logexitx(1, "%s wire_sendmsg SPEER", __func__);
+				logexitx(1, "%s wire_sendmsg SPEER %zu",
+				    __func__, m);
 		}
 	}
 
@@ -1173,22 +1185,26 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 	smsg.init.enclport = ifn->ifnwithencl;
 	smsg.init.proxport = ifn->ifnwithprox;
 
-	if (wire_sendmsg(ifn->mastwithifn, SINIT, &smsg.init, sizeof(smsg.init)) == -1)
-		logexitx(1, "%s wire_sendmsg SINIT %d", __func__, ifn->mastwithifn);
+	if (wire_sendmsg(ifn->mastwithifn, SINIT, &smsg.init, sizeof(smsg.init))
+	    == -1)
+		logexitx(1, "%s wire_sendmsg SINIT %d", __func__,
+		    ifn->mastwithifn);
 
 	memset(&smsg.ifn, 0, sizeof(smsg.ifn));
 
 	smsg.ifn.ifnid = ifnid;
 	snprintf(smsg.ifn.ifname, sizeof(smsg.ifn.ifname), "%s", ifn->ifname);
 	if (ifn->ifdesc && strlen(ifn->ifdesc) > 0)
-		snprintf(smsg.ifn.ifdesc, sizeof(smsg.ifn.ifdesc), "%s", ifn->ifdesc);
+		snprintf(smsg.ifn.ifdesc, sizeof(smsg.ifn.ifdesc), "%s",
+		    ifn->ifdesc);
 	memcpy(smsg.ifn.mac1key, ifn->mac1key, sizeof(smsg.ifn.mac1key));
 	memcpy(smsg.ifn.cookiekey, ifn->cookiekey, sizeof(smsg.ifn.cookiekey));
 	smsg.ifn.nifaddrs = ifn->ifaddrssize;
 	smsg.ifn.nlistenaddrs = ifn->listenaddrssize;
 	smsg.ifn.npeers = ifn->peerssize;
 
-	if (wire_sendmsg(ifn->mastwithifn, SIFN, &smsg.ifn, sizeof(smsg.ifn)) == -1)
+	if (wire_sendmsg(ifn->mastwithifn, SIFN, &smsg.ifn, sizeof(smsg.ifn))
+	    == -1)
 		logexitx(1, "%s wire_sendmsg SIFN %s", __func__, ifn->ifname);
 
 	/* first send interface addresses */
@@ -1204,7 +1220,8 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 
 		if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
 		    sizeof(smsg.cidraddr)) == -1)
-			logexitx(1, "%s wire_sendmsg SCIDRADDR", __func__);
+			logexitx(1, "%s wire_sendmsg interface SCIDRADDR",
+			    __func__);
 	}
 
 	/* then listen addresses */
@@ -1219,7 +1236,8 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 
 		if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
 		    sizeof(smsg.cidraddr)) == -1)
-			logexitx(1, "%s wire_sendmsg SCIDRADDR", __func__);
+			logexitx(1, "%s wire_sendmsg listen SCIDRADDR",
+			    __func__);
 	}
 
 	/* at last send the peers */
@@ -1230,13 +1248,14 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 
 		smsg.peer.ifnid = ifnid;
 		smsg.peer.peerid = m;
-		snprintf(smsg.peer.name, sizeof(smsg.peer.name), "%s", peer->name);
+		snprintf(smsg.peer.name, sizeof(smsg.peer.name), "%s",
+		    peer->name);
 		smsg.peer.nallowedips = peer->allowedipssize;
 		memcpy(&smsg.peer.fsa, &peer->fsa, sizeof(smsg.peer.fsa));
 
-		if (wire_sendmsg(ifn->mastwithifn, SPEER, &smsg.peer, sizeof(smsg.peer))
-		    == -1)
-			logexitx(1, "wire_sendmsg SPEER %zu", m);
+		if (wire_sendmsg(ifn->mastwithifn, SPEER, &smsg.peer,
+		    sizeof(smsg.peer)) == -1)
+			logexitx(1, "%s wire_sendmsg SPEER %zu", __func__, m);
 
 		for (n = 0; n < peer->allowedipssize; n++) {
 			allowedip = peer->allowedips[n];
@@ -1249,9 +1268,10 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 			memcpy(&smsg.cidraddr.addr, &allowedip->addr,
 			    sizeof(smsg.cidraddr.addr));
 
-			if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
-			    sizeof(smsg.cidraddr)) == -1)
-				logexitx(1, "wire_sendmsg SCIDRADDR");
+			if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR,
+			    &smsg.cidraddr, sizeof(smsg.cidraddr)) == -1)
+				logexitx(1, "%s wire_sendmsg peer %d allowedip"
+				    " %d SCIDRADDR", __func__, m, n);
 		}
 	}
 
