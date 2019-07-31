@@ -19,6 +19,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #include "base64.h"
 
@@ -28,6 +29,9 @@ main(void)
 	uint8_t privkey[X25519_KEY_LENGTH];
 	uint8_t pubkey[X25519_KEY_LENGTH];
 	char b64[46];
+
+	if (pledge("stdio", "") == -1)
+		err(1, "pledge");
 
 	X25519_keypair(pubkey, privkey);
 
