@@ -17,6 +17,7 @@
 #include <err.h>
 #include <openssl/curve25519.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "base64.h"
@@ -40,7 +41,7 @@ main(void)
 
 	fprintf(stdout, "pubkey\t%s\n", b64);
 
-	X25519_keypair(pubkey, privkey);
+	arc4random_buf(privkey, sizeof(privkey));
 
 	if (base64_ntop(privkey, sizeof(privkey), b64, sizeof(b64)) != 44)
 		errx(1, "b64_ntop");
