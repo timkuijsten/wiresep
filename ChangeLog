@@ -1,0 +1,14 @@
+2019-08-08, Version 0.6.0 
+
+* lot's of small refinements and some code restructuring
+* interface public key is no longer needed or allowed, only the private key
+* improve DoS resistence in the proxy by looking up sessions in logarithmic time
+* use gprof plus a new testing harness to measure the performance of the proxy
+* increase socket receive buffers to eight maximum sized UDP packets
+* proxy: collect stats and log on SIGUSR1
+* improvements to wiresep-keygen(1)
+
+
+2019-05-05, Version 0.5.0 
+
+* first public release
