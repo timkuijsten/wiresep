@@ -1807,12 +1807,12 @@ handlesocketmsg(const struct peer *p)
 	if (msgtypes[mtcode].varsize) {
 		if (msgsize < msgtypes[mtcode].size) {
 			logwarnx("expected at least %zu bytes instead of %zu",
-			    msgtypes[1].size, msgsize);
+			    msgtypes[mtcode].size, msgsize);
 			return -1;
 		}
 	} else if (msgsize != msgtypes[mtcode].size) {
 		logwarnx("%s expected message size %zu, got %zu",
-		    __func__, msgtypes[1].size, msgsize);
+		    __func__, msgtypes[mtcode].size, msgsize);
 		return -1;
 	}
 
