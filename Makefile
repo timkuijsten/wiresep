@@ -76,6 +76,11 @@ gv:
 	dot -Tpng doc/processdesign.gv -o doc/processdesign.png
 	dot -Tsvg doc/processdesign.gv -o doc/processdesign.svg
 
+testifn: tai64n.o blake2s-ref.o wireprot.o wiresep.o util.o scfg.o base64.o \
+    parseconfig.o ifn.c test/testifn.c
+	${CC} ${CFLAGS} -g -pg tai64n.o blake2s-ref.o wiresep.o wireprot.o \
+	    util.o base64.o scfg.o parseconfig.o test/testifn.c -o $@ -lcrypto
+
 # run make CFLAGS="-pg -DPROFIL" testproxy
 testproxy: tai64n.o blake2s-ref.o wireprot.o wiresep.o util.o scfg.o base64.o \
     parseconfig.o proxy.c test/testproxy.c
