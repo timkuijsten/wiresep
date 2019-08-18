@@ -1308,11 +1308,13 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	*(uint64_t *)&nonce[4] = mwdhdr->counter;
 	if (EVP_AEAD_CTX_open(&sess->recvctx, &out[TUNHDRSIZ], &outsize, outsize,
 	    nonce, sizeof(nonce), payload, payloadsize, NULL, 0) == 0) {
-		logwarnx("unauthenticated data received %zu, %zu %u %u %llu",
+		logwarnx("unauthenticated data received, UDP data: %zu, WG "
+		    "data: %zu, session id: %u, peer id: %u, counter: %llu",
 		    mwdsize, payloadsize, sess->id, sess->peerid,
 		    counter);
 		return -1;
 	}
+
 	payloadsize = outsize;
 	payload = &out[TUNHDRSIZ];
 	outsize += TUNHDRSIZ;
@@ -1617,6 +1619,7 @@ handleenclavemsg(void)
 		if (EVP_AEAD_CTX_init(&sess->sendctx, aead, msk->sendkey,
 		    KEYLEN, TAGLEN, NULL) == 0)
 			return -1;
+
 		if (EVP_AEAD_CTX_init(&sess->recvctx, aead, msk->recvkey,
 		    KEYLEN, TAGLEN, NULL) == 0)
 			return -1;
