@@ -34,6 +34,7 @@
 #include <netinet/ip6.h>
 #include <netinet6/in6_var.h>
 #include <openssl/evp.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -248,7 +249,7 @@ struct ifn {
 static uid_t uid;
 static gid_t gid;
 
-static int kq, tund, pport, eport;
+static int kq, tund, pport, eport, doterm;
 static struct ifn *ifn;
 static uint8_t msg[MAXSCRATCH];
 static utime_t now;
@@ -256,6 +257,19 @@ static uint8_t nonce[12] = { 0 };
 static size_t sesscounter;
 
 static const EVP_AEAD *aead;
+
+static void
+handlesig(int signo)
+{
+	switch (signo) {
+	case SIGTERM:
+		doterm = 1;
+		break;
+	default:
+		logwarnx("unexpected signal %d %s", signo, strsignal(signo));
+		break;
+	}
+}
 
 /*
 static void
@@ -2105,10 +2119,21 @@ ifn_serv(void)
 	}
 
 	for (;;) {
-		if ((nev = kevent(kq, NULL, 0, ev, maxevsize, NULL)) == -1)
-			logexit(1, "kevent");
-		if (nev == 0)
+		if (doterm)
+			logexitx(1, "received TERM, shutting down");
+
+		if ((nev = kevent(kq, NULL, 0, ev, maxevsize, NULL)) == -1) {
+			if (errno == EINTR) {
+				continue;
+			} else {
+				logexit(1, "kevent");
+			}
+		}
+
+		if (nev == 0) {
+			lognoticex("kevent == 0");
 			continue;
+		}
 
 		if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
 			logexit(1, "%s clock_gettime", __func__);
@@ -2562,6 +2587,7 @@ recvconfig(int masterport)
 void
 ifn_init(int masterport)
 {
+	struct sigaction sa;
 	size_t n;
 	int stdopen;
 
@@ -2608,6 +2634,16 @@ ifn_init(int masterport)
 
 	if (verbose > 1)
 		loginfox("%s created", ifn->ifname);
+
+	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
+	sa.sa_handler = handlesig;
+	sa.sa_flags = SA_RESTART;
+	if (sigemptyset(&sa.sa_mask) == -1)
+		logexit(1, "sigemptyset");
+	if (sigaction(SIGUSR1, &sa, NULL) == -1)
+		logexit(1, "sigaction SIGUSR1");
+	if (sigaction(SIGTERM, &sa, NULL) == -1)
+		logexit(1, "sigaction SIGTERM");
 
 	if (chroot(EMPTYDIR) == -1)
 		logexit(1, "chroot %s", EMPTYDIR);
