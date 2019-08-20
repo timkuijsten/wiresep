@@ -1315,7 +1315,7 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	}
 
 	if (payloadoffset(&payload, &payloadsize, mwdhdr, mwdsize) == -1)
-		return 0;
+		return -1;
 
 	/* prepend a tunnel header */
 	outsize -= TUNHDRSIZ;
