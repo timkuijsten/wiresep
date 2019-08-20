@@ -24,12 +24,14 @@
 #include <stdio.h>
 
 #define EMPTYDIR "/var/empty"
+#define MAXIPSTR 40 /* full ipv6 address in hex notation with terminating nul */
 
 int isopenfd(int);
 int readhexnomem(uint8_t *, size_t, const char *, size_t);
 void hexdump(FILE *, const uint8_t *, size_t , size_t);
 int dropuser(uid_t, gid_t);
 int strtoaddr(struct sockaddr_storage *, const char *, const char *, int);
+int addrtostr(char *, size_t, const struct sockaddr *, int);
 int printaddr(FILE *, const struct sockaddr *, const char *, const char *);
 int snprintv6addr(char *, size_t, const struct in6_addr *);
 void printopenfds(FILE *, int);

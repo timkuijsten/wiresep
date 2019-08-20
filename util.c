@@ -263,6 +263,61 @@ strtoaddr(struct sockaddr_storage *r, const char *name, const char *serv,
 }
 
 /*
+ * Convert an ip address to a string representation.
+ *
+ * Note: If "out" is at least one byte then nul termination is guaranteed.
+ * Note2: if "outsize" >= MAXIPSTR than any succesfully resolved ip-address will
+ * always fit.
+ *
+ * Return 0 on success, or -1 on error, i.e. if outsize was not big enough.
+ */
+int
+addrtostr(char *out, size_t outsize, const struct sockaddr *sa, int noport)
+{
+	char host[NI_MAXHOST], serv[NI_MAXSERV];
+	const char *fmt;
+	int e;
+
+	if (out == NULL || outsize == 0)
+		return -1;
+
+	out[0] = '\0';
+
+	if (sa == NULL)
+		return -1;
+
+	e = getnameinfo(sa, sa->sa_len, host, sizeof(host), serv, sizeof(serv),
+	    NI_NUMERICHOST | NI_NUMERICSERV);
+
+	if (e)
+		return -1;
+
+	if (sa->sa_family == AF_INET6) {
+		if (noport) {
+			fmt = "[%s]";
+		} else {
+			fmt = "[%s]:%s";
+		}
+	} else {
+		if (noport) {
+			fmt = "%s";
+		} else {
+			fmt = "%s:%s";
+		}
+	}
+
+	if (noport) {
+		if ((size_t)snprintf(out, outsize, fmt, host) >= outsize)
+			return -1;
+	} else {
+		if ((size_t)snprintf(out, outsize, fmt, host, serv) >= outsize)
+			return -1;
+	}
+
+	return 0;
+}
+
+/*
  * Print "pre", a string representation of the socket address and "post" on
  * "fp". "pre" and "post" are optional.
  *
