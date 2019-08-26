@@ -1058,10 +1058,10 @@ sessdestroy(struct session *sess)
 	}
 
 	if (cleartimer(sess->id) == -1)
-		logwarn("%s cleartimer %u", __func__, sess->id);
+		logwarn("%s cleartimer %x", __func__, sess->id);
 
 	if (verbose > 1)
-		loginfox("%s %u %zu", __func__, sess->id, sesscounter);
+		loginfox("%s %x %zu", __func__, sess->id, sesscounter);
 
 	freezero(sess, sizeof(*sess));
 	sesscounter--;
@@ -1149,7 +1149,7 @@ static void
 maketentcurr(struct peer *peer)
 {
 	if (verbose > 1)
-		loginfox("%s %zu", __func__, peer->stent->id);
+		loginfox("%s %x", __func__, peer->stent->id);
 
 	/* clear the handshake rekey-timeout timer */
 	if (cleartimer(peer->stent->id) == -1)
@@ -1172,7 +1172,7 @@ static void
 makenextcurr(struct peer *peer)
 {
 	if (verbose > 1)
-		loginfox("%s %zu", __func__, peer->snext->id);
+		loginfox("%s %x", __func__, peer->snext->id);
 
 	sessdestroy(peer->sprev);
 	peer->sprev = peer->scurr;
@@ -1201,7 +1201,7 @@ settimer(unsigned int id, utime_t usec)
 	assert(kevent(kq, &ev, 1, NULL, 0, NULL) != -1);
 
 	if (verbose > 1)
-		loginfox("timer %u set to %llu milliseconds", id, usec / 1000);
+		loginfox("timer %x set to %llu milliseconds", id, usec / 1000);
 }
 
 /*
@@ -1512,7 +1512,7 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 
 	/* SUCCESS */
 	if (verbose > 1)
-		loginfox("%s: %u %zu bytes", sess->peer->name, sess->id,
+		loginfox("%s: %x %zu bytes", sess->peer->name, sess->id,
 		    payloadsize);
 
 	/*
@@ -1759,7 +1759,7 @@ handleenclavemsg(void)
 		sess->start = now;
 
 		if (verbose > 1)
-			loginfox("new session %u with %s %s %u",
+			loginfox("new session %x with %s %s %x",
 			    sess->id,
 			    sess->initiator ? "responder" : "initiator" ,
 			    sess->peer->name,
@@ -2003,7 +2003,8 @@ handlesocketmsg(const struct peer *p)
 
 		mwr = (struct msgwgresp *)msg;
 		if (!peerhassessid(p, le32toh(mwr->receiver))) {
-			logwarnx("MSGWGRESP unknown receiver %u", le32toh(mwr->receiver));
+			logwarnx("MSGWGRESP unknown receiver %x",
+			    le32toh(mwr->receiver));
 			stats.sockinerr++;
 			stats.respinerr++;
 			return -1;
@@ -2042,13 +2043,13 @@ handlesocketmsg(const struct peer *p)
 		} else if (p->sprev && receiver == p->sprev->id) {
 			sess = p->sprev;
 		} else {
-			logwarnx("data with unknown session received %u",
+			logwarnx("data with unknown session received %x",
 			    receiver);
 			stats.sockinerr++;
 			return -1;
 		}
 		if (!sessusable(sess)) {
-			logwarnx("data for unusable session received %u",
+			logwarnx("data for unusable session received %x",
 			    receiver);
 			stats.sockinerr++;
 			return -1;
@@ -2110,8 +2111,8 @@ handleproxymsg(void)
 			return -1;
 		}
 		if (!sessusable(sess)) {
-			logwarnx("data for unusable session %u received via proxy",
-			    le32toh(mwdhdr->receiver));
+			logwarnx("data for unusable session %x received via "
+			    "proxy", le32toh(mwdhdr->receiver));
 			stats.proxinerr++;
 			return -1;
 		}
@@ -2199,13 +2200,13 @@ sesshandletimer(struct kevent *ev)
 
 	if (istent) {
 		if (verbose > 0)
-			lognoticex("Rekey-Timeout %u %s", sess->id,
+			lognoticex("Rekey-Timeout %x %s", sess->id,
 			    sess->peer->name);
 
 		handlerekeytimeout(sess->peer);
 	} else {
 		if (verbose > 0)
-			lognoticex("Keepalive-Timeout %u %s", sess->id,
+			lognoticex("Keepalive-Timeout %x %s", sess->id,
 			    sess->peer->name);
 
 		assert(sess->kaset);
