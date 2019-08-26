@@ -915,7 +915,7 @@ proxy_loginfo(void)
 		}
 
 		for (m = 0; m < ifn->sessmapvsize; m++)
-			logwarnx("%02d %07x", m, (uint32_t)ifn->sessmapv[m]->sessid);
+			logwarnx("%02d %08x", m, (uint32_t)ifn->sessmapv[m]->sessid);
 	}
 
 	logwarnx("total recv %zu %zu bytes\n"

@@ -297,7 +297,7 @@ logsessinfo(const char *pre, const struct session *sess)
 		return;
 	}
 
-	logwarnx("%s %c %07x:%07x %llu/%llu %lld %lld %lld %s",
+	logwarnx("%s %c %08x:%08x %llu/%llu %lld %lld %lld %s",
 	    pre ? pre : "",
 	    sess->initiator ? 'I' : 'R',
 	    sess->id,
