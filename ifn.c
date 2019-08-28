@@ -1928,7 +1928,7 @@ handletundmsg(void)
  * Return 0 on success, -1 on error.
  */
 static int
-handlesocketmsg(const struct peer *p)
+handlesocketmsg(struct peer *p)
 {
 	struct msgwginit *mwi;
 	struct msgwgresp *mwr;
@@ -1942,6 +1942,8 @@ handlesocketmsg(const struct peer *p)
 
 	rc = read(p->s, msg, sizeof(msg));
 	if (rc < 0) {
+		p->state = UNCONNECTED;
+
 		logwarn("%s read error", __func__);
 		return -1;
 	}
@@ -2287,7 +2289,6 @@ ifn_serv(void)
 
 		if (peerconnect(peer, &ss, &peer->fsa) == -1)
 			logexitx(1, "peerconnect");
-		reqhs(peer);
 	}
 
 	for (;;) {
