@@ -15,6 +15,7 @@
  */
 
 #include <sys/types.h>
+#include <sys/queue.h>
 #include <sys/event.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -63,6 +64,9 @@
 #define wsTUNMTU 1420
 #define TAGLEN 16
 #define DATAHEADERLEN 16
+
+#define MAXQUEUEPACKETS 1000
+#define MAXQUEUEPACKETSDATASZ ((size_t)(MAXSCRATCH * MAXQUEUEPACKETS))
 
 /*
  * 64-bit integer that represents microseconds.
@@ -208,6 +212,13 @@ struct cidraddr {
 	size_t prefixlen;
 };
 
+/* queued packet */
+struct qpacket {
+	uint8_t *data;
+	size_t datasize;
+	SIMPLEQ_ENTRY(qpacket) qpackets;
+};
+
 struct peer {
 	enum { UNCONNECTED, CONNECTED } state;
 	int s6bound;
@@ -224,8 +235,9 @@ struct peer {
 	struct session *scurr;
 	struct session *snext;
 	struct session *stent; /* used during handshake */
-	void *qpacket; /* queued packet */
-	size_t qpacketsize;
+	SIMPLEQ_HEAD(, qpacket) qpacketlist;
+	size_t qpackets;
+	size_t qpacketsdatasz;
 	struct cidraddr **allowedips;
 	size_t allowedipssize;
 };
@@ -1596,6 +1608,7 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 static int
 handleenclavemsg(void)
 {
+	struct qpacket *qp;
 	struct session *sess;
 	struct msgconnreq *mcr;
 	struct msgwginit *mwi;
@@ -1766,23 +1779,28 @@ handleenclavemsg(void)
 			    sess->peerid);
 
 		/* Only the initiator may start sending data right away */
-		if (sess->initiator && p->qpacket) {
-			rc = encryptandsend(msg, sizeof(msg), p->qpacket,
-			    p->qpacketsize, sess);
-			if (rc == -1) {
-				logwarnx("encryptandsend qpacket");
-				stats.sockouterr++;
-				stats.queueouterr++;
-				free(p->qpacket);
-				p->qpacket = NULL;
-				p->qpacketsize = 0;
-				return -1;
+		if (sess->initiator && p->qpackets > 0) {
+			while (!SIMPLEQ_EMPTY(&sess->peer->qpacketlist)) {
+				qp = SIMPLEQ_FIRST(&sess->peer->qpacketlist);
+				rc = encryptandsend(msg, sizeof(msg), qp->data,
+				    qp->datasize, sess);
+
+				if (rc == -1) {
+					stats.sockouterr++;
+					stats.queueouterr++;
+				} else {
+					stats.queueout++;
+					stats.queueoutsz += qp->datasize;
+				}
+				SIMPLEQ_REMOVE_HEAD(&sess->peer->qpacketlist,
+				    qpackets);
+				p->qpackets--;
+				p->qpacketsdatasz -= qp->datasize;
+				free(qp->data);
+				qp->data = NULL;
+				qp->datasize = 0;
+				free(qp);
 			}
-			stats.queueout++;
-			stats.queueoutsz += p->qpacketsize;
-			free(p->qpacket);
-			p->qpacket = NULL;
-			p->qpacketsize = 0;
 		}
 		break;
 	default:
@@ -1810,6 +1828,7 @@ handleenclavemsg(void)
 static int
 handletundmsg(void)
 {
+	struct qpacket *qp;
 	struct peer *p;
 	struct ip6_hdr *ip6hdr;
 	struct ip *ip4;
@@ -1893,18 +1912,40 @@ handletundmsg(void)
 	}
 
 	if (!sessusable(p->scurr)) {
-		if (p->qpacket) {
-			stats.queueouterr++;
-			free(p->qpacket);
-			p->qpacket = NULL;
-			p->qpacketsize = 0;
+		if (p->qpackets >= MAXQUEUEPACKETS) {
+			stats.sockouterr++;
+			stats.queueinerr++;
+			return -1;
 		}
-		p->qpacketsize = rc - TUNHDRSIZ;
-		if ((p->qpacket = malloc(p->qpacketsize)) == NULL)
-			logexit(1, "%s malloc", __func__);
-		memcpy(p->qpacket, &msg[TUNHDRSIZ], p->qpacketsize);
+
+		if ((MAXQUEUEPACKETSDATASZ - (msgsize - TUNHDRSIZ)) <
+		    p->qpacketsdatasz) {
+			stats.sockouterr++;
+			stats.queueinerr++;
+			return -1;
+		}
+
+		if ((qp = malloc(sizeof(*qp))) == NULL) {
+			stats.sockouterr++;
+			stats.queueinerr++;
+			return -1;
+		}
+
+		qp->datasize = msgsize - TUNHDRSIZ;
+
+		if ((qp->data = malloc(qp->datasize)) == NULL) {
+			free(qp);
+			stats.sockouterr++;
+			stats.queueinerr++;
+			return -1;
+		}
+
+		memcpy(qp->data, &msg[TUNHDRSIZ], qp->datasize);
+		SIMPLEQ_INSERT_TAIL(&p->qpacketlist, qp, qpackets);
+		p->qpackets++;
+		p->qpacketsdatasz += qp->datasize;
 		stats.queuein++;
-		stats.queueinsz += p->qpacketsize;
+		stats.queueinsz += qp->datasize;
 		reqhs(p);
 		return -1;
 	}
@@ -2448,8 +2489,9 @@ peernew(uint32_t id, const char *name)
 	peer->s6bound = 0;
 	peer->s4bound = 0;
 	peer->prefixlen = 0;
-	peer->qpacket = NULL;
-	peer->qpacketsize = 0;
+	peer->qpackets = 0;
+	peer->qpacketsdatasz = 0;
+	SIMPLEQ_INIT(&peer->qpacketlist);
 	peer->allowedips = NULL;
 	peer->allowedipssize = 0;
 	memset(&peer->lsa, 0, sizeof(peer->lsa));
