@@ -918,14 +918,9 @@ proxy_loginfo(void)
 			logwarnx("%02d %08x", m, (uint32_t)ifn->sessmapv[m]->sessid);
 	}
 
-	logwarnx("total recv %zu %zu bytes\n"
-	    "fwd ifn %zu %zu bytes\n"
-	    "fwd enc %zu %zu bytes\n"
-	    "corrupted %zu\n"
-	    "invalid mac %zu\n"
-	    "invalid peer %zu",
-	    totalrecv, totalrecvsz,
-	    totalfwdifn, totalfwdifnsz,
-	    totalfwdenc, totalfwdencsz,
+	logwarnx("total recv %zu %zu bytes", totalrecv, totalrecvsz);
+	logwarnx("fwd ifn %zu %zu bytes", totalfwdifn, totalfwdifnsz);
+	logwarnx("fwd enc %zu %zu bytes", totalfwdenc, totalfwdencsz);
+	logwarnx("corrupted/invalid mac/invalid peer %zu/%zu/%zu",
 	    corrupted, invalidmac, invalidpeer);
 }
