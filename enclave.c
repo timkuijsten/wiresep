@@ -24,6 +24,7 @@
 #include <fcntl.h>
 #include <openssl/curve25519.h>
 #include <openssl/evp.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
@@ -94,7 +95,7 @@ struct ifn {
 static uid_t uid;
 static gid_t gid;
 
-static int kq, pport;
+static int kq, pport, doterm, logstats;
 
 static uint8_t msg[MAXSCRATCH];
 
@@ -153,6 +154,22 @@ hmac(wskey out, const struct iovec *iovin, size_t iovinlen, const wskey key)
 	blake2s_final(&state, i_hash, BLAKE2S_OUTBYTES);
 
 	memcpy(out, i_hash, BLAKE2S_OUTBYTES);
+}
+
+static void
+handlesig(int signo)
+{
+	switch (signo) {
+	case SIGUSR1:
+		logstats = 1;
+		break;
+	case SIGTERM:
+		doterm = 1;
+		break;
+	default:
+		logwarnx("unexpected signal %d %s", signo, strsignal(signo));
+		break;
+	}
 }
 
 /*
@@ -1007,8 +1024,20 @@ enclave_serv(void)
 		logexit(1, "kevent");
 
 	for (;;) {
-		if ((nev = kevent(kq, NULL, 0, ev, evsize, NULL)) == -1)
-			logexit(1, "kevent");
+		if (logstats) {
+			logstats = 0;
+		}
+
+		if (doterm)
+			logexitx(1, "received TERM, shutting down");
+
+		if ((nev = kevent(kq, NULL, 0, ev, evsize, NULL)) == -1) {
+			if (errno == EINTR) {
+				continue;
+			} else {
+				logexit(1, "kevent");
+			}
+		}
 
 		if (verbose > 2)
 			logdebugx("%d events", nev);
@@ -1181,6 +1210,7 @@ recvconfig(int masterport)
 void
 enclave_init(int masterport)
 {
+	struct sigaction sa;
 	size_t n;
 	int stdopen;
 
@@ -1207,6 +1237,16 @@ enclave_init(int masterport)
 
 	if ((size_t)getdtablecount() != stdopen + 2 + ifnvsize)
 		logexitx(1, "descriptor mismatch: %d", getdtablecount());
+
+	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
+	sa.sa_handler = handlesig;
+	sa.sa_flags = SA_RESTART;
+	if (sigemptyset(&sa.sa_mask) == -1)
+		logexit(1, "sigemptyset");
+	if (sigaction(SIGUSR1, &sa, NULL) == -1)
+		logexit(1, "sigaction SIGUSR1");
+	if (sigaction(SIGTERM, &sa, NULL) == -1)
+		logexit(1, "sigaction SIGTERM");
 
 	if (chroot(EMPTYDIR) == -1)
 		logexit(1, "chroot %s", EMPTYDIR);
