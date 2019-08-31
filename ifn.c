@@ -148,22 +148,15 @@ extern int background, verbose;
  *		destroy tent
  * }
  *
- * maketentcurr {
- *	clear rekeytimer
- *	prev = curr
- *	curr = tent
- *	clear tent
- * }
- *
  * initnextsess {
  *	set next session ids
  *	start = now
  * }
  *
- * makenextcurr {
+ * makesesscurr {
  *	prev = curr
- *	curr = next
- *	clear next
+ *	curr = sess
+ *	clear sess
  * }
  *
  * sessusable(sess) {
@@ -988,21 +981,14 @@ cleartimer(unsigned int id)
 }
 
 /*
- * Return a newly allocated session on success, abort on failure.
+ * Initialize a session for the given peer and role.
  *
  * All fields are initialized, except for id, peerid and start. These should be
  * set by the caller when known.
- *
- * The caller should pass the allocated structure to sessdestroy when done.
  */
-static struct session *
-sessnew(struct peer *peer, char initiator)
+static void
+sessinit(struct session *sess, struct peer *peer, char initiator)
 {
-	struct session *sess;
-
-	if ((sess = malloc(sizeof(*sess))) == NULL)
-		logexit(1, "%s malloc", __func__);
-
 	sesscounter++;
 
 	sess->initiator = initiator;
@@ -1015,8 +1001,6 @@ sessnew(struct peer *peer, char initiator)
 	sess->lasthsreq = 0;
 	sess->sendnonce = 0;
 	memset(&sess->arrecv, 0, sizeof(sess->arrecv));
-
-	return sess;
 }
 
 /*
@@ -1043,15 +1027,13 @@ notifyproxy(uint32_t peerid, uint32_t sessid, enum sessidtype type)
 }
 
 /*
- * Destroy and free a session. Also notify the proxy of the invalid session id.
+ * Destroy keys and timers of a session. Also notify the proxy of the now
+ * invalid session id.
  *
  * Call this function whenever:
- * 1. new next session is created and an old one exists
- * 2. session reaches time limit
- * 3. session reaches number-of-messages limit
- * 4. previous session is rolled out, because of a new tentative session
- * 5. previous session is rolled out, because of a new next session
- * 6. no session established after Rekey-Attempt-Time
+ * 1. session reaches time limit
+ * 2. session reaches number-of-messages limit
+ * 3. no session established after Rekey-Attempt-Time
  */
 static void
 sessdestroy(struct session *sess)
@@ -1059,6 +1041,12 @@ sessdestroy(struct session *sess)
 	uint32_t sessid, peerid;
 
 	if (sess == NULL)
+		return;
+
+	/*
+	 * Guard against explicit_bzeros of tent and next sessions.
+	 */
+	if (sess->peer == NULL)
 		return;
 
 	sessid = sess->id;
@@ -1075,7 +1063,7 @@ sessdestroy(struct session *sess)
 	if (verbose > 1)
 		loginfox("%s %x %zu", __func__, sess->id, sesscounter);
 
-	freezero(sess, sizeof(*sess));
+	explicit_bzero(sess, sizeof(struct session));
 	sesscounter--;
 
 	/*
@@ -1096,8 +1084,7 @@ reqhs(struct peer *peer)
 {
 	struct msgreqwginit mri;
 
-	if (!peer->stent)
-		peer->stent = sessnew(peer, 1);
+	sessinit(peer->stent, peer, 1);
 
 	if (now - peer->stent->lasthsreq >= REKEY_TIMEOUT) {
 		peer->stent->lasthsreq = now;
@@ -1153,47 +1140,54 @@ sessusable(const struct session *sess)
 }
 
 /*
- * Roll the tentative session into the current slot. If a current session
- * exists, roll it into prev, if a previous session exists, destroy it. Also
- * notify the proxy of the new current session.
+ * Copy "sess" into the current slot and erase "sess" safely. If a current
+ * session already exists, roll it into prev, if a previous session exists,
+ * destroy and free it. Also notify the proxy of the new current session.
+ *
+ * Return the new current session on success, or NULL on error.
  */
-static void
-maketentcurr(struct peer *peer)
+static struct session *
+makesesscurr(struct session *sess)
 {
+	struct peer *peer;
+
 	if (verbose > 1)
-		loginfox("%s %x", __func__, peer->stent->id);
+		loginfox("%s %x", __func__, sess->id);
 
-	/* clear the handshake rekey-timeout timer */
-	if (cleartimer(peer->stent->id) == -1)
-		return;
+	peer = sess->peer;
 
-	sessdestroy(peer->sprev);
+	/*
+	 * Clear the handshake rekey-timeout timer in case this was a tentative
+	 * session.
+	 */
+	if (cleartimer(sess->id) == -1)
+		return NULL;
+
+	if (peer->sprev) {
+		sessdestroy(peer->sprev);
+		freezero(peer->sprev, sizeof(struct session));
+		peer->sprev = NULL;
+	}
+
 	peer->sprev = peer->scurr;
-	peer->scurr = peer->stent;
-	peer->stent = NULL;
+
+	peer->scurr = malloc(sizeof(struct session));
+	if (peer->scurr == NULL)
+		logexitx(1, "%s malloc", __func__);
+
+	memcpy(peer->scurr, sess, sizeof(*sess));
+
+	/*
+	 * Don't destroy the session, just erase this part from memory so that
+	 * the credentials are only available in the newly allocated memory.
+	 */
+	explicit_bzero(sess, sizeof(struct session));
 
 	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
 		if (verbose > -1)
 			logwarnx("%s: could not notify proxy", __func__);
-}
 
-/*
- * Make the next session the current session and notify the proxy about it.
- */
-static void
-makenextcurr(struct peer *peer)
-{
-	if (verbose > 1)
-		loginfox("%s %x", __func__, peer->snext->id);
-
-	sessdestroy(peer->sprev);
-	peer->sprev = peer->scurr;
-	peer->scurr = peer->snext;
-	peer->snext = NULL;
-
-	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
-		if (verbose > -1)
-			logwarnx("%s: could not notify proxy", __func__);
+	return peer->scurr;
 }
 
 /*
@@ -1329,11 +1323,13 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 
 		/* session reaches number-of-messages limit */
 		if (sess->peer->scurr == sess) {
-			sess->peer->scurr = NULL;
 			sessdestroy(sess);
+			freezero(sess, sizeof(struct session));
+			sess = sess->peer->scurr = NULL;
 		} else if (sess->peer->sprev == sess) {
-			sess->peer->sprev = NULL;
 			sessdestroy(sess);
+			freezero(sess, sizeof(struct session));
+			sess = sess->peer->sprev = NULL;
 		} else {
 			abort();
 		}
@@ -1347,11 +1343,13 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 
 		/* session reaches time limit */
 		if (sess->peer->scurr == sess) {
-			sess->peer->scurr = NULL;
 			sessdestroy(sess);
+			freezero(sess, sizeof(struct session));
+			sess = sess->peer->scurr = NULL;
 		} else if (sess->peer->sprev == sess) {
-			sess->peer->sprev = NULL;
 			sessdestroy(sess);
+			freezero(sess, sizeof(struct session));
+			sess = sess->peer->sprev = NULL;
 		} else {
 			abort();
 		}
@@ -1540,7 +1538,7 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	sess->deadline = 0;
 
 	if (isnext)
-		makenextcurr(sess->peer);
+		sess = makesesscurr(sess);
 
 	if (sess->arrecv.maxseqnum == REJECT_AFTER_MESSAGES) {
 		if (verbose > 1)
@@ -1549,11 +1547,13 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 
 		/* session reaches number-of-messages limit */
 		if (sess->peer->scurr == sess) {
-			sess->peer->scurr = NULL;
 			sessdestroy(sess);
+			freezero(sess, sizeof(struct session));
+			sess = sess->peer->scurr = NULL;
 		} else if (sess->peer->sprev == sess) {
-			sess->peer->sprev = NULL;
 			sessdestroy(sess);
+			freezero(sess, sizeof(struct session));
+			sess = sess->peer->sprev = NULL;
 		} else {
 			abort();
 		}
@@ -1567,11 +1567,13 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 
 		/* session reaches time limit */
 		if (sess->peer->scurr == sess) {
-			sess->peer->scurr = NULL;
 			sessdestroy(sess);
+			freezero(sess, sizeof(struct session));
+			sess = sess->peer->scurr = NULL;
 		} else if (sess->peer->sprev == sess) {
-			sess->peer->sprev = NULL;
 			sessdestroy(sess);
+			freezero(sess, sizeof(struct session));
+			sess = sess->peer->sprev = NULL;
 		} else {
 			abort();
 		}
@@ -1682,7 +1684,6 @@ handleenclavemsg(void)
 
 			/* no session established after Rekey-Attempt-Time */
 			sessdestroy(p->stent);
-			p->stent = NULL;
 		}
 		break;
 	case MSGWGRESP:
@@ -1703,7 +1704,7 @@ handleenclavemsg(void)
 			loginfox("%s received new handshake", __func__);
 
 		sessdestroy(p->snext);
-		p->snext = sessnew(p, 0);
+		sessinit(p->snext, p, 0);
 		p->snext->id = le32toh(mwr->sender);
 
 		if (notifyproxy(p->id, p->snext->id, SESSIDNEXT) == -1)
@@ -1742,8 +1743,7 @@ handleenclavemsg(void)
 		msk = (struct msgsesskeys *)msg;
 		sess = NULL;
 		if (p->stent && p->stent->id == msk->sessid) {
-			sess = p->stent;
-			maketentcurr(p);
+			sess = makesesscurr(p->stent);
 		} else if (p->snext && p->snext->id == msk->sessid) {
 			sess = p->snext;
 		} else {
@@ -2529,8 +2529,23 @@ peernew(uint32_t id, const char *name)
 
 	loginfox("peer udp4 receive buffer: %d", len);
 
-	/* mark sessions as unused */
-	peer->snext = peer->scurr = peer->sprev = peer->stent = NULL;
+	/*
+	 * Pre-allocate tentative and next sessions so that unauthenticated
+	 * session negotiation does not allocate any new data. As soon as a new
+	 * session is authenticated and moved to curr, new memory is allocated
+	 * to randomize it's position on the heap.
+	 */
+
+	if ((peer->stent = malloc(sizeof(struct session))) == NULL)
+		logexit(1, "%s malloc", __func__);
+
+	if ((peer->snext = malloc(sizeof(struct session))) == NULL)
+		logexit(1, "%s malloc", __func__);
+
+	sessinit(peer->stent, peer, 1);
+	sessinit(peer->snext, peer, 0);
+
+	peer->scurr = peer->sprev = NULL;
 
 	return peer;
 }
