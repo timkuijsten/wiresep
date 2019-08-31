@@ -16,6 +16,7 @@
 
 #include <assert.h>
 #include <err.h>
+#include <errno.h>
 #include <limits.h>
 #include <string.h>
 #include <unistd.h>
@@ -110,9 +111,14 @@ wire_recvmsg(int port, unsigned char *mtcode, void *msg, size_t *msgsize)
 	iov[iovlen].iov_len = 1;
 	iovlen++;
 
+again:
 	r = readv(port, iov, iovlen);
-	if (r <= 0)
+	if (r <= 0) {
+		if (r == -1 && errno == EINTR)
+			goto again;
+
 		return -1;
+	}
 
 	/*
 	 * XXX make sure readv(2) on AF_UNIX SOCK_DGRAM never returns partially
@@ -184,9 +190,14 @@ wire_sendmsg(int port, unsigned char mtcode, const void *msg, size_t msgsize)
 	iov[iovlen].iov_len = msgsize;
 	iovlen++;
 
+again:
 	r = writev(port, iov, iovlen);
-	if (r <= 0)
+	if (r <= 0) {
+		if (r == -1 && errno == EINTR)
+			goto again;
+
 		return -1;
+	}
 
 	/*
 	 * XXX make sure writev(2) on AF_UNIX SOCK_DGRAM never returns partially
@@ -237,9 +248,14 @@ wire_sendpeeridmsg(int port, uint32_t peerid, unsigned char mtcode,
 	iov[iovlen].iov_len = msgsize;
 	iovlen++;
 
+again:
 	r = writev(port, iov, iovlen);
-	if (r <= 0)
+	if (r <= 0) {
+		if (r == -1 && errno == EINTR)
+			goto again;
+
 		return -1;
+	}
 
 	if ((size_t)r < sizeof(peerid) + sizeof(mtcode))
 		return -1;
@@ -278,9 +294,14 @@ wire_recvpeeridmsg(int port, uint32_t *peerid, unsigned char *mtcode, void *msg,
 	iov[iovlen].iov_len = *msgsize;
 	iovlen++;
 
+again:
 	r = readv(port, iov, iovlen);
-	if (r <= 0)
+	if (r <= 0) {
+		if (r == -1 && errno == EINTR)
+			goto again;
+
 		return -1;
+	}
 
 	if ((size_t)r < sizeof(*peerid) + sizeof(*mtcode))
 		return -1;
@@ -348,9 +369,14 @@ wire_proxysendmsg(int port, uint32_t ifnid, const struct sockaddr_storage *lsa,
 	iov[iovlen].iov_len = msgsize;
 	iovlen++;
 
+again:
 	r = writev(port, iov, iovlen);
-	if (r <= 0)
+	if (r <= 0) {
+		if (r == -1 && errno == EINTR)
+			goto again;
+
 		return -1;
+	}
 
 	/*
 	 * XXX make sure writev(2) on AF_UNIX SOCK_DGRAM never returns partially
@@ -404,9 +430,14 @@ wire_recvproxymsg(int port, uint32_t *ifnid, struct sockaddr_storage *lsa,
 	iov[iovlen].iov_len = *msgsize;
 	iovlen++;
 
+again:
 	r = readv(port, iov, iovlen);
-	if (r <= 0)
+	if (r <= 0) {
+		if (r == -1 && errno == EINTR)
+			goto again;
+
 		return -1;
+	}
 
 	/*
 	 * XXX make sure readv(2) on AF_UNIX SOCK_DGRAM never returns partially
