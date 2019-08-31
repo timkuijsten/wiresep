@@ -19,6 +19,7 @@
 
 #include <assert.h>
 #include <err.h>
+#include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <signal.h>
@@ -43,7 +44,7 @@ void ifn_serv(void);
 void master_printinfo(FILE *);
 
 /* these are used by the other modules as well */
-int background, verbose;
+int background, verbose, doterm;
 
 /* global settings */
 static char *configfile;
@@ -58,6 +59,19 @@ static union smsg smsg;
 /* communication channels */
 int mastwithencl, enclwithmast, mastwithprox, proxwithmast, enclwithprox,
     proxwithencl;
+
+static void
+handlesig(int signo)
+{
+	switch (signo) {
+	case SIGTERM:
+		doterm = 1;
+		break;
+	default:
+		logwarnx("unexpected signal %d %s", signo, strsignal(signo));
+		break;
+	}
+}
 
 void
 printdescriptors(void)
@@ -95,6 +109,7 @@ printusage(FILE *fp)
 int
 main(int argc, char **argv)
 {
+	struct sigaction sa;
 	/* descriptors for all communication channels */
 	chan *ifchan, mastmast, tmpchan;
 	size_t n, m;
@@ -186,6 +201,22 @@ main(int argc, char **argv)
 			close(mastmast[1]);
 
 			/*
+			 * Ignore SIGUSR1 and catch SIGTERM.
+			 */
+
+			sa.sa_flags = 0;
+			if (sigemptyset(&sa.sa_mask) == -1)
+				err(1, "sigemptyset");
+
+			sa.sa_handler = SIG_IGN;
+			if (sigaction(SIGUSR1, &sa, NULL) == -1)
+				err(1, "sigaction SIGUSR1");
+
+			sa.sa_handler = handlesig;
+			if (sigaction(SIGTERM, &sa, NULL) == -1)
+				err(1, "sigaction SIGTERM");
+
+			/*
 			 * Signal that we are ready and each process may proceed
 			 * and start processing untrusted input.
 			 */
@@ -194,24 +225,41 @@ main(int argc, char **argv)
 			for (n = 0; n < ifnvsize; n++)
 				signal_eos(smsg, ifchan[n][0]);
 
-			if ((pid = waitpid(WAIT_ANY, &stat, 0)) == -1)
-				err(1, "waitpid");
+			/*
+			 * Wait for first child to die or when a SIGTERM is
+			 * received.
+			 */
+			if ((pid = waitpid(WAIT_ANY, &stat, 0)) == -1) {
+				if (errno != EINTR)
+					err(1, "waitpid");
 
-			if (WIFEXITED(stat)) {
-				warnx("child %d normal exit %d", pid,
-				    WEXITSTATUS(stat));
-			} else if (WIFSIGNALED(stat)) {
-				warnx("child %d exit by signal %d %s%s", pid,
-				    WTERMSIG(stat), strsignal(WTERMSIG(stat)),
-				    WCOREDUMP(stat) ? " (core)" : "");
-			} else
-				warnx("unknown termination status");
+				if (!doterm)
+					errx(1, "return from unexpected "
+					    "signal");
+
+				warnx("received TERM, shutting down");
+			} else {
+				if (WIFEXITED(stat)) {
+					warnx("child %d normal exit %d", pid,
+					    WEXITSTATUS(stat));
+				} else if (WIFSIGNALED(stat)) {
+					warnx("child %d exit by signal %d %s%s",
+					    pid, WTERMSIG(stat),
+					    strsignal(WTERMSIG(stat)),
+					    WCOREDUMP(stat) ? " (core)" : "");
+				} else
+					warnx("unknown termination status");
+			}
+
+			/*
+			 * It's ok to send TERM to ourselves as our signal
+			 * handler only sets the doterm flag.
+			 */
 
 			if (killpg(0, SIGTERM) == -1)
 				err(1, "killpg");
 
-			/* should never reach */
-			exit(3);
+			exit(0);
 		case 'd':
 			foreground = 1;
 			break;
