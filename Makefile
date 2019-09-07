@@ -11,6 +11,10 @@ BINDIR	= $(PREFIX)/bin
 SBINDIR	= $(PREFIX)/sbin
 MANDIR	= $(PREFIX)/man
 
+VERSION_MAJOR	= 0
+VERSION_MINOR	= 7
+VERSION_PATCH	= 0
+
 SRCFILES = base64.c enclave.c master.c proxy.c test.c wireprot.c wiresep.c \
 	    ifn.c parseconfig.c tai64n.c util.c wiresep-keygen.c
 
@@ -24,9 +28,10 @@ lint:
 
 wiresep: tai64n.o blake2s-ref.o wireprot.o wiresep.o util.o enclave.o proxy.o \
     ifn.o scfg.o base64.o parseconfig.o master.c
-	${CC} ${CFLAGS} tai64n.o blake2s-ref.o wiresep.o wireprot.o util.o \
-	    enclave.o proxy.o ifn.o base64.o scfg.o parseconfig.o master.c \
-	    -o $@ -lcrypto
+	${CC} ${CFLAGS} -DVERSION_MAJOR=${VERSION_MAJOR} \
+	    -DVERSION_MINOR=${VERSION_MINOR} -DVERSION_PATCH=${VERSION_PATCH} \
+	    tai64n.o blake2s-ref.o wiresep.o wireprot.o util.o enclave.o \
+	    proxy.o ifn.o base64.o scfg.o parseconfig.o master.c -o $@ -lcrypto
 
 wiresep-keygen: base64.o wiresep-keygen.c
 	${CC} ${CFLAGS} base64.o wiresep-keygen.c -o $@ -lcrypto

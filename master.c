@@ -30,6 +30,12 @@
 
 #include "parseconfig.h"
 
+#ifndef VERSION_MAJOR
+#define VERSION_MAJOR 0
+#define VERSION_MINOR 0
+#define VERSION_PATCH 0
+#endif
+
 #define DEFAULTCONFIG "/etc/wiresep.conf"
 
 typedef int chan[2];
@@ -93,9 +99,16 @@ printdescriptors(void)
 }
 
 void
+printversion(int d)
+{
+	dprintf(d, "WireSep v%d.%d.%d\n", VERSION_MAJOR, VERSION_MINOR,
+	    VERSION_PATCH);
+}
+
+void
 printusage(int d)
 {
-	dprintf(d, "usage: %s [-dnqv] [-f file]\n", getprogname());
+	dprintf(d, "usage: %s [-dnqVv] [-f file]\n", getprogname());
 }
 
 /*
@@ -137,7 +150,7 @@ main(int argc, char **argv)
 
 	configtest = 0;
 	foreground = 0;
-	while ((c = getopt(argc, argv, "E:I:M:P:df:hnqv")) != -1)
+	while ((c = getopt(argc, argv, "E:I:M:P:Vdf:hnqv")) != -1)
 		switch(c) {
 		case 'E':
 			masterport = strtonum(optarg, 0, INT_MAX, &errstr);
@@ -275,6 +288,9 @@ main(int argc, char **argv)
 		case 'q':
 			verbose--;
 			break;
+		case 'V':
+			printversion(STDOUT_FILENO);
+			exit(0);
 		case 'v':
 			verbose++;
 			break;
