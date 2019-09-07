@@ -1,4 +1,4 @@
-CFLAGS = -O0 -g -W -Wall -Wextra -Wpedantic
+CFLAGS = -Wall -Wextra -pedantic-errors -O0 -g
 
 INSTALL_ETC 	= install -m 0640
 INSTALL_BIN 	= install -m 0555
@@ -11,7 +11,16 @@ BINDIR	= $(PREFIX)/bin
 SBINDIR	= $(PREFIX)/sbin
 MANDIR	= $(PREFIX)/man
 
+SRCFILES = base64.c enclave.c master.c proxy.c test.c wireprot.c wiresep.c \
+	    ifn.c parseconfig.c tai64n.c util.c wiresep-keygen.c
+
+HDRFILES = antireplay.h parseconfig.h tai64n.h wireprot.h base64.h scfg.h \
+	    util.h wiresep.h
+
 all: wiresep wiresep-keygen
+
+lint:
+	${CC} ${CFLAGS} -fsyntax-only ${SRCFILES} ${HDRFILES} 2>&1
 
 wiresep: tai64n.o blake2s-ref.o wireprot.o wiresep.o util.o enclave.o proxy.o \
     ifn.o scfg.o base64.o parseconfig.o master.c
@@ -72,11 +81,7 @@ clean:
 	rm -f y.tab.c *.o *.core *.html wiresep wiresep-keygen testproxy
 
 tags: *.[ch]
-	ctags *.[ch]
-
-lint:
-	${CC} -fsyntax-only master.c enclave.c proxy.c ifn.c wireprot.c \
-	    wireprot.h util.c util.h wiresep.h wiresep.c
+	find . -name '*.[chy]' | xargs ctags -d
 
 wiresep-keygen.1.html:  wiresep-keygen.1
 	mandoc -T html -O style=man.css wiresep-keygen.1 > wiresep-keygen.1.html
