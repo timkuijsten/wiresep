@@ -902,7 +902,8 @@ peerconnect(struct peer *p, const struct sockaddr_storage *lsa,
 	memmove(&p->lsa, &ss, sizeof(ss));
 
 	if (verbose > -1) {
-		printaddr(stderr, (struct sockaddr *)&p->lsa, "connected", NULL);
+		printaddr(stderr, (struct sockaddr *)&p->lsa, "connected",
+		    NULL);
 		printaddr(stderr, (struct sockaddr *)&p->fsa, " ->", "\n");
 	}
 
@@ -926,8 +927,8 @@ peerconnect(struct peer *p, const struct sockaddr_storage *lsa,
 		sin4 = (struct sockaddr_in *)&p->lsa;
 		if (src4->sin_port != sin4->sin_port) {
 			if (verbose > -1)
-				logwarnx("wrong local v4 port picked %u instead of"
-				    " %u", ntohs(src4->sin_port),
+				logwarnx("wrong local v4 port picked %u instead"
+				    " of %u", ntohs(src4->sin_port),
 				    ntohs(sin4->sin_port));
 			return -1;
 		}
@@ -935,8 +936,8 @@ peerconnect(struct peer *p, const struct sockaddr_storage *lsa,
 		if (src4->sin_addr.s_addr != INADDR_ANY &&
 		    src4->sin_addr.s_addr != sin4->sin_addr.s_addr) {
 			if (verbose > -1)
-				logwarnx("wrong local v4 address picked, please "
-				    "update routing table");
+				logwarnx("wrong local v4 address picked, please"
+				    " update routing table");
 		}
 	}
 
@@ -1309,8 +1310,8 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 		sess->deadline = now + KEEPALIVE_TIMEOUT + REKEY_TIMEOUT;
 
 	if (verbose > 1)
-		loginfox("encapsulated %zu bytes into %zu for %s", padlen, outsize,
-		    sess->peer->name);
+		loginfox("encapsulated %zu bytes into %zu for %s", padlen,
+		    outsize, sess->peer->name);
 
 	/*
 	 * Handle session limits.
@@ -1414,8 +1415,9 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	/* prepend a tunnel header */
 	outsize -= TUNHDRSIZ;
 	*(uint64_t *)&nonce[4] = mwdhdr->counter;
-	if (EVP_AEAD_CTX_open(&sess->recvctx, &out[TUNHDRSIZ], &outsize, outsize,
-	    nonce, sizeof(nonce), payload, payloadsize, NULL, 0) == 0) {
+	if (EVP_AEAD_CTX_open(&sess->recvctx, &out[TUNHDRSIZ], &outsize,
+	    outsize, nonce, sizeof(nonce), payload, payloadsize, NULL, 0)
+	    == 0) {
 		logwarnx("unauthenticated data received, UDP data: %zu, WG "
 		    "data: %zu, session id: %u, peer id: %u, counter: %llu",
 		    mwdsize, payloadsize, sess->id, sess->peerid,
@@ -1602,8 +1604,8 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
  * MSGCONNREQ
  *   connect a peer
  * MSGSESSKEYS
- *   new session established, must match "tent" if we are the initiator, or "next"
- *   if we are the responder. If "tent", rotate to "curr".
+ *   new session established, must match "tent" if we are the initiator, or
+ *   "next" if we are the responder. If "tent", rotate to "curr".
  *
  * Return 0 on success, -1 on error.
  */
@@ -1650,7 +1652,8 @@ handleenclavemsg(void)
 			if (rc < 0)
 				logexit(1, "%s write MSGWGINIT", __func__);
 			if ((size_t)rc != msgsize)
-				logexitx(1, "%s write MSGWGINIT %zd", __func__, rc);
+				logexitx(1, "%s write MSGWGINIT %zd", __func__,
+				    rc);
 
 			stats.initout++;
 			stats.sockout++;
@@ -1661,8 +1664,8 @@ handleenclavemsg(void)
 
 			if (notifyproxy(p->id, sess->id, SESSIDTENT) == -1)
 				if (verbose > -1)
-					logwarnx("could not notify proxy of tent "
-					    "session id");
+					logwarnx("could not notify proxy of "
+					    "tent session id");
 		}
 
 		/* set timeout */
@@ -1709,8 +1712,8 @@ handleenclavemsg(void)
 
 		if (notifyproxy(p->id, p->snext->id, SESSIDNEXT) == -1)
 			if (verbose > -1)
-				logwarnx("could not notify proxy of next session "
-				    "id");
+				logwarnx("could not notify proxy of next "
+				    "session id");
 
 		rc = write(p->s, msg, msgsize);
 		if (rc < 0) {
@@ -1720,8 +1723,8 @@ handleenclavemsg(void)
 			return -1;
 		}
 		if ((size_t)rc != msgsize) {
-			logwarnx("%s write MSGWGRESP %zd expected %zu", __func__,
-			    rc, msgsize);
+			logwarnx("%s write MSGWGRESP %zd expected %zu",
+			    __func__, rc, msgsize);
 			stats.sockouterr++;
 			stats.respouterr++;
 			return -1;
@@ -1877,7 +1880,8 @@ handletundmsg(void)
 		ip4 = (struct ip *)&msg[TUNHDRSIZ];
 		if (!peerbyroute4(&p, &ip4->ip_dst)) {
 			if (verbose > 0)
-				lognoticex("no route to %s", inet_ntoa(ip4->ip_dst));
+				lognoticex("no route to %s",
+				    inet_ntoa(ip4->ip_dst));
 			errno = EHOSTUNREACH;
 			stats.devinerr++;
 			return -1;
@@ -1950,8 +1954,8 @@ handletundmsg(void)
 		return -1;
 	}
 
-	return encryptandsend(msg, sizeof(msg), &msg[TUNHDRSIZ], msgsize - TUNHDRSIZ,
-	    p->scurr);
+	return encryptandsend(msg, sizeof(msg), &msg[TUNHDRSIZ],
+	    msgsize - TUNHDRSIZ, p->scurr);
 }
 
 /*
@@ -2028,8 +2032,8 @@ handlesocketmsg(struct peer *p)
 		stats.initin++;
 
 		mwi = (struct msgwginit *)msg;
-		if (!ws_validmac(mwi->mac1, sizeof(mwi->mac1), mwi, MAC1OFFSETINIT,
-		    ifn->mac1key)) {
+		if (!ws_validmac(mwi->mac1, sizeof(mwi->mac1), mwi,
+		    MAC1OFFSETINIT, ifn->mac1key)) {
 			logwarnx("MSGWGINIT invalid mac1");
 			stats.sockinerr++;
 			stats.initinerr++;
@@ -2053,8 +2057,8 @@ handlesocketmsg(struct peer *p)
 			return -1;
 		}
 
-		if (!ws_validmac(mwr->mac1, sizeof(mwr->mac1), mwr, MAC1OFFSETRESP,
-		    ifn->mac1key)) {
+		if (!ws_validmac(mwr->mac1, sizeof(mwr->mac1), mwr,
+		    MAC1OFFSETRESP, ifn->mac1key)) {
 			logwarnx("MSGWGRESP invalid mac1");
 			stats.sockinerr++;
 			stats.respinerr++;
@@ -2165,7 +2169,8 @@ handleproxymsg(void)
 		else
 			isnext = 0;
 
-		if (decryptandfwd(msg, sizeof(msg), mwdhdr, msgsize, sess, isnext) == -1)
+		if (decryptandfwd(msg, sizeof(msg), mwdhdr, msgsize, sess,
+		    isnext) == -1)
 			return -1;
 
 		if (peerconnect(p, &lsa, &fsa) == -1) {
@@ -2318,9 +2323,9 @@ ifn_serv(void)
 				listenaddr = ifn->listenaddrs[m];
 		}
 		if (listenaddr == NULL) {
-			printaddr(stderr, (struct sockaddr *)&peer->fsa, "coult not "
-			    "find a suitable source address to connect to peer",
-			    "\n");
+			printaddr(stderr, (struct sockaddr *)&peer->fsa, "could"
+			    " not find a suitable source address to connect to "
+			    "peer", "\n");
 			continue;
 		}
 

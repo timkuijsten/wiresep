@@ -296,8 +296,8 @@ handleifnmsg(const struct sockmap *sockmap)
 		msi = (struct msgsessid *)msg;
 
 		if (verbose > 1)
-			loginfox("received %u %u from %s", msi->type, msi->sessid,
-			    ifn->ifname);
+			loginfox("received %u %u from %s", msi->type,
+			    msi->sessid, ifn->ifname);
 
 		switch (msi->type) {
 		case SESSIDDESTROY:
@@ -310,9 +310,9 @@ handleifnmsg(const struct sockmap *sockmap)
 			} else if (msi->sessid == peer->sessprev) {
 				sessid = &peer->sessprev;
 			} else {
-				logwarnx("%s: could not destroy session for peer "
-				    "%u, session id not found: %u", ifn->ifname,
-				    peer->id, msi->sessid);
+				logwarnx("%s: could not destroy session for "
+				    "peer %u, session id not found: %u",
+				    ifn->ifname, peer->id, msi->sessid);
 				break;
 			}
 			if (sessmapvreplace(ifn, peer, msi->sessid, -1) == -1)
@@ -340,8 +340,8 @@ handleifnmsg(const struct sockmap *sockmap)
 			} else if (msi->sessid == peer->sessnext) {
 				sessid = &peer->sessnext;
 			} else {
-				logwarnx("%s: current session for peer %u was not "
-				    "tentative or next: %u", ifn->ifname,
+				logwarnx("%s: current session for peer %u was "
+				    "not tentative or next: %u", ifn->ifname,
 				    peer->id, msi->sessid);
 				break;
 			}
@@ -361,8 +361,8 @@ handleifnmsg(const struct sockmap *sockmap)
 			if (peer->sessprev != -1)
 				if (sessmapvreplace(ifn, peer, peer->sessprev,
 				    -1) == -1)
-					logwarn("could not find prev session id: "
-					    "%llu", peer->sessprev);
+					logwarn("could not find prev session "
+					    "id: %llu", peer->sessprev);
 
 			if (peer->sesscurr != -1)
 				peer->sessprev = peer->sesscurr;
@@ -451,8 +451,8 @@ handlesockmsg(const struct sockmap *sockmap)
 	switch (mtcode) {
 	case MSGWGINIT:
 		mwi = (struct msgwginit *)msg;
-		if (!ws_validmac(mwi->mac1, sizeof(mwi->mac1), mwi, MAC1OFFSETINIT,
-		    ifn->mac1key)) {
+		if (!ws_validmac(mwi->mac1, sizeof(mwi->mac1), mwi,
+		    MAC1OFFSETINIT, ifn->mac1key)) {
 			logwarnx("MSGWGINIT invalid mac1");
 			invalidmac++;
 			return -1;

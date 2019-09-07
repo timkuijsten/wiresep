@@ -106,7 +106,8 @@ static struct tai64n ts;
 static struct iovec iov[3];
 static wshash conshash, considhash, tmph;
 static wskey k, t0, tau, tmpc;
-static uint8_t tmpempty[0 + TAGLEN], tmpts[12 + TAGLEN], tmpstat[KEYLEN + TAGLEN];
+static uint8_t tmpempty[0 + TAGLEN], tmpts[12 + TAGLEN],
+    tmpstat[KEYLEN + TAGLEN];
 
 /*
  * Copyright (c) 2019 Matt Dunwoodie
@@ -280,7 +281,8 @@ dh(wskey sharedsecret, const wskey privkey, const wskey peerkey)
 }
 
 static void
-inithash2(wshash out, const void *in1, size_t in1size, const void *in2, size_t in2size)
+inithash2(wshash out, const void *in1, size_t in1size, const void *in2,
+    size_t in2size)
 {
 	iov[0].iov_base = (uint8_t *)in1;
 	iov[0].iov_len = in1size;
@@ -300,8 +302,8 @@ appendhash(wshash h, const uint8_t *in, size_t insize)
 }
 
 /*
- * Find a peer by public key and interface. Return 1 if found and updates "p" to point
- * to it. 0 if not found and updates "p" to NULL.
+ * Find a peer by public key and interface. Return 1 if found and updates "p" to
+ * point to it. 0 if not found and updates "p" to NULL.
  *
  * XXX log(n)
  */
@@ -323,8 +325,8 @@ findifnpeerbypubkey(struct peer **p, const struct ifn *ifn, wskey pubkey)
 }
 
 /*
- * Find a peer by session id and interface. Return 1 if found and updates "p" to point
- * to it. 0 if not found and updates "p" to NULL.
+ * Find a peer by session id and interface. Return 1 if found and updates "p" to
+ * point to it. 0 if not found and updates "p" to NULL.
  *
  * XXX log(n)
  */
@@ -379,9 +381,11 @@ printpeer(FILE *fp, const struct peer *peer)
 	fprintf(fp, "pubkey\n");
 	hexdump(fp, peer->pubkey, sizeof(peer->pubkey), sizeof(peer->pubkey));
 	fprintf(fp, "pubkeyhash\n");
-	hexdump(fp, peer->pubkeyhash, sizeof(peer->pubkeyhash), sizeof(peer->pubkeyhash));
+	hexdump(fp, peer->pubkeyhash, sizeof(peer->pubkeyhash),
+	    sizeof(peer->pubkeyhash));
 	fprintf(fp, "mac1key\n");
-	hexdump(fp, peer->mac1key, sizeof(peer->mac1key), sizeof(peer->mac1key));
+	hexdump(fp, peer->mac1key, sizeof(peer->mac1key),
+	    sizeof(peer->mac1key));
 	fprintf(fp, "recvts\n");
 	hexdump(fp, peer->recvts, sizeof(peer->recvts), sizeof(peer->recvts));
 }
@@ -653,7 +657,8 @@ upgradehsresp(struct hs *hs, struct msgwgresp *mwr, int responder)
 			return -1;
 	} else {
 		n = sizeof(tmpempty);
-		if (aead(tmpempty, &n, mwr->empty, sizeof(mwr->empty), k, tmph, 1))
+		if (aead(tmpempty, &n, mwr->empty, sizeof(mwr->empty), k, tmph,
+		    1))
 			return -1;
 	}
 	/* skip hashing msg.empty */
@@ -709,8 +714,9 @@ createhsresp(struct peer *peer, struct msgwgresp *mwr,
 }
 
 /*
- * Handle an incoming MSGWGINIT, make sure it authenticates and determine or verify
- * the peer. Then write the appropriate response. Reads and writes to "msg".
+ * Handle an incoming MSGWGINIT, make sure it authenticates and determine or
+ * verify the peer. Then write the appropriate response. Reads and writes to
+ * "msg".
  *
  * Return 0 on success, -1 if data did not authenticate or another error
  * occurred.
@@ -775,7 +781,8 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 	/* send MSGWGRESP to ifn */
 	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGWGRESP, mwr,
 	    sizeof(*mwr)) == -1) {
-		logwarnx("%s error sending MSGWGRESP to %s", __func__, ifn->ifname);
+		logwarnx("%s error sending MSGWGRESP to %s", __func__,
+		    ifn->ifname);
 		return -1;
 	}
 
@@ -794,8 +801,9 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 }
 
 /*
- * Handle an incoming MSGWGRESP, make sure it authenticates and determine or verify
- * the peer. Then write the appropriate response. Reads and writes to "msg".
+ * Handle an incoming MSGWGRESP, make sure it authenticates and determine or
+ * verify the peer. Then write the appropriate response. Reads and writes to
+ * "msg".
  *
  * Return 0 on success, -1 if data did not authenticate or another error
  * occurred.
@@ -835,7 +843,8 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 	}
 	peer = p;
 	if (upgradehsresp(peer->hs, mwr, 0) == -1) {
-		logwarnx("peer %u: unauthenticated response received", peer->id);
+		logwarnx("peer %u: unauthenticated response received",
+		    peer->id);
 		return -1;
 	}
 
@@ -899,7 +908,8 @@ handleifnmsg(const struct ifn *ifn)
 	}
 
 	if (!findifnpeerbyid(&peer, ifn, peerid)) {
-		logwarnx("%s unknown peer id from ifn %s", __func__, ifn->ifname);
+		logwarnx("%s unknown peer id from ifn %s", __func__,
+		    ifn->ifname);
 		return -1;
 	}
 
@@ -928,8 +938,8 @@ handleifnmsg(const struct ifn *ifn)
 			lognoticex("sent MSGWGINIT to %s", ifn->ifname);
 		break;
 	default:
-		logwarnx("wire_recvifnmsg unknown message from %s: %d", ifn->ifname,
-		    mtcode);
+		logwarnx("wire_recvifnmsg unknown message from %s: %d",
+		    ifn->ifname, mtcode);
 		return -1;
 	}
 
@@ -985,7 +995,8 @@ handleproxymsg(void)
 		}
 		break;
 	default:
-		logwarnx("wire_recvproxymsg unknown message from proxy: %d", mtcode);
+		logwarnx("wire_recvproxymsg unknown message from proxy: %d",
+		    mtcode);
 		return -1;
 	}
 
@@ -1070,7 +1081,8 @@ enclave_serv(void)
 						break;
 					}
 					if (verbose > 1)
-						loginfox("%s readable", ifnv[n]->ifname);
+						loginfox("%s readable",
+						    ifnv[n]->ifname);
 					handleifnmsg(ifnv[n]);
 					break;
 				}
@@ -1146,10 +1158,13 @@ recvconfig(int masterport)
 		    sizeof(*ifn->peers))) == NULL)
 			logexit(1, "calloc ifnv->peers");
 
-		memcpy(ifn->privkey, smsg.ifn.privkey, sizeof(smsg.ifn.privkey));
+		memcpy(ifn->privkey, smsg.ifn.privkey,
+		    sizeof(smsg.ifn.privkey));
 		memcpy(ifn->pubkey, smsg.ifn.pubkey, sizeof(smsg.ifn.pubkey));
-		memcpy(ifn->pubkeyhash, smsg.ifn.pubkeyhash, sizeof(smsg.ifn.pubkeyhash));
-		memcpy(ifn->mac1key, smsg.ifn.mac1key, sizeof(smsg.ifn.mac1key));
+		memcpy(ifn->pubkeyhash, smsg.ifn.pubkeyhash,
+		    sizeof(smsg.ifn.pubkeyhash));
+		memcpy(ifn->mac1key, smsg.ifn.mac1key,
+		    sizeof(smsg.ifn.mac1key));
 		memcpy(ifn->cookiekey, smsg.ifn.cookiekey,
 		    sizeof(smsg.ifn.cookiekey));
 
@@ -1270,13 +1285,17 @@ enclave_printinfo(FILE *fp)
 		fprintf(fp, "id %u\n", ifn->id);
 		fprintf(fp, "port %d\n", ifn->port);
 		fprintf(fp, "pubkey\n");
-		hexdump(fp, ifn->pubkey, sizeof(ifn->pubkey), sizeof(ifn->pubkey));
+		hexdump(fp, ifn->pubkey, sizeof(ifn->pubkey),
+		    sizeof(ifn->pubkey));
 		fprintf(fp, "pubkeyhash\n");
-		hexdump(fp, ifn->pubkeyhash, sizeof(ifn->pubkeyhash), sizeof(ifn->pubkeyhash));
+		hexdump(fp, ifn->pubkeyhash, sizeof(ifn->pubkeyhash),
+		    sizeof(ifn->pubkeyhash));
 		fprintf(fp, "mac1key\n");
-		hexdump(fp, ifn->mac1key, sizeof(ifn->mac1key), sizeof(ifn->mac1key));
+		hexdump(fp, ifn->mac1key, sizeof(ifn->mac1key),
+		    sizeof(ifn->mac1key));
 		fprintf(fp, "cookiekey\n");
-		hexdump(fp, ifn->cookiekey, sizeof(ifn->cookiekey), sizeof(ifn->cookiekey));
+		hexdump(fp, ifn->cookiekey, sizeof(ifn->cookiekey),
+		    sizeof(ifn->cookiekey));
 
 		for (m = 0; m < ifn->peerssize; m++) {
 			printpeer(fp, ifn->peers[m]);
