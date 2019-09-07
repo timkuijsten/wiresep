@@ -93,9 +93,9 @@ printdescriptors(void)
 }
 
 void
-printusage(FILE *fp)
+printusage(int d)
 {
-	fprintf(fp, "usage: %s [-dnqv] [-f file]\n", getprogname());
+	dprintf(d, "usage: %s [-dnqv] [-f file]\n", getprogname());
 }
 
 /*
@@ -267,7 +267,7 @@ main(int argc, char **argv)
 			configfile = optarg;
 			break;
 		case 'h':
-			printusage(stdout);
+			printusage(STDOUT_FILENO);
 			exit(0);
 		case 'n':
 			configtest = 1;
@@ -279,7 +279,7 @@ main(int argc, char **argv)
 			verbose++;
 			break;
 		case '?':
-			printusage(stderr);
+			printusage(STDERR_FILENO);
 			exit(1);
 		}
 
@@ -287,7 +287,7 @@ main(int argc, char **argv)
 	argv += optind;
 
 	if (argc != 0) {
-		printusage(stderr);
+		printusage(STDERR_FILENO);
 		exit(1);
 	}
 
