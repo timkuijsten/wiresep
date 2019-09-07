@@ -1451,12 +1451,9 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 			ip6hdr = (struct ip6_hdr *)payload;
 			if (!peerbyroute6(&routedpeer, &ip6hdr->ip6_src)) {
 				if (verbose > -1) {
-					if (snprintv6addr((char *)msg,
-					    sizeof(msg), &ip6hdr->ip6_src)
-					    == -1) {
-						stats.invalidpeer++;
-						return -1;
-					}
+					addrtostr((char *)msg, sizeof(msg),
+					    (struct sockaddr *)&ip6hdr->ip6_src,
+					    1);
 					logwarnx("valid packet from %s with "
 					    "an invalid source ip received: %s",
 					    sess->peer->name, msg);
@@ -1870,9 +1867,11 @@ handletundmsg(void)
 			logwarnx("invalid ipv6 packet");
 		ip6hdr = (struct ip6_hdr *)&msg[TUNHDRSIZ];
 		if (!peerbyroute6(&p, &ip6hdr->ip6_dst)) {
-			if (verbose > 0 && snprintv6addr((char *)msg,
-			    sizeof(msg), &ip6hdr->ip6_dst) == 0)
-				lognoticex("no route to %s", msg);
+			addrtostr((char *)msg, sizeof(msg),
+			    (struct sockaddr *)&ip6hdr->ip6_dst, 1);
+
+			lognoticex("no route to %s", msg);
+
 			errno = EHOSTUNREACH;
 			stats.devinerr++;
 			return -1;
@@ -2802,14 +2801,14 @@ recvconfig(int masterport)
 			if (allowedip->addr.ss_family == AF_INET6) {
 				if (peerbyroute6(&peer2, &allowedip->v6addrmasked)
 				    && peer != peer2) {
-					snprintv6addr((char *)msg, sizeof(msg),
-					    &allowedip->v6addrmasked);
+					addrtostr(addrstr, sizeof(addrstr),
+					    (struct sockaddr *)&allowedip->v6addrmasked,
+					    1);
 
-					fprintf(stderr, "%s: %s/%zu\n",
+					logexitx(1, "%s: %s/%zu\n",
 					    "multiple allowedips with the same "
 					    "address and prefixlen",
-					    msg, allowedip->prefixlen);
-					exit(1);
+					    addrstr, allowedip->prefixlen);
 				}
 			}
 		}

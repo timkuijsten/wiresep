@@ -316,56 +316,6 @@ addrtostr(char *out, size_t outsize, const struct sockaddr *sa, int noport)
 	return 0;
 }
 
-/*
- * Write an ipv6 address into "out". In order for any address to fit "out"
- * should be at least 40 bytes, but is always nul terminated even if the address
- * won't completely fit.
- *
- * Return 0 on success, -1 if "out" is NULL or less than 16 bytes in size.
- */
-int
-snprintv6addr(char *out, size_t outsize, const struct in6_addr *ia)
-{
-	ssize_t n, r, left;
-	uint8_t b1, b2;
-
-	if (out == NULL || outsize < 16)
-		return -1;
-
-	left = outsize;
-
-	/* snprintf always \0 terminates */
-
-	for (n = 0; n + 1 < 16 && left >= (ssize_t)sizeof(":ffff\0"); n += 2) {
-		b1 = ((uint8_t *)ia)[n];
-		b2 = ((uint8_t *)ia)[n + 1];
-
-		if (n > 0) {
-			r = snprintf(out, left, ":");
-			if (r < 1 || r >= left)
-				return 0;
-			left -= r;
-			out += r;
-		}
-
-		if (b1 > 0) {
-			r = snprintf(out, left, "%x%02x", b1, b2);
-			if (r < 1 || r >= left)
-				return 0;
-			left -= r;
-			out += r;
-		} else {
-			r = snprintf(out, left, "%x", b2);
-			if (r < 1 || r >= left)
-				return 0;
-			left -= r;
-			out += r;
-		}
-	}
-
-	return 0;
-}
-
 void
 printopenfds(FILE *fp, int maxfd)
 {
