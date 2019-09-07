@@ -812,6 +812,7 @@ static int
 peerconnect(struct peer *p, const struct sockaddr_storage *lsa,
     const struct sockaddr_storage *fsa)
 {
+	char addrstr1[MAXIPSTR], addrstr2[MAXIPSTR];
 	static struct sockaddr_storage ss;
 	struct sockaddr_in6 *src6, *sin6;
 	struct sockaddr_in *src4, *sin4;
@@ -902,9 +903,12 @@ peerconnect(struct peer *p, const struct sockaddr_storage *lsa,
 	memmove(&p->lsa, &ss, sizeof(ss));
 
 	if (verbose > -1) {
-		printaddr(stderr, (struct sockaddr *)&p->lsa, "connected",
-		    NULL);
-		printaddr(stderr, (struct sockaddr *)&p->fsa, " ->", "\n");
+		addrtostr(addrstr1, sizeof(addrstr1),
+		    (struct sockaddr *)&p->lsa, 0);
+		addrtostr(addrstr2, sizeof(addrstr2),
+		    (struct sockaddr *)&p->fsa, 0);
+
+		loginfox("connected %s -> %s", addrstr1, addrstr2);
 	}
 
 	if (p->lsa.ss_family == AF_INET6) {
@@ -2281,6 +2285,7 @@ sesshandletimer(struct kevent *ev)
 void
 ifn_serv(void)
 {
+	char addrstr[MAXIPSTR];
 	struct sockaddr_storage ss, *listenaddr;
 	struct peer *peer;
 	struct kevent *ev;
@@ -2323,9 +2328,10 @@ ifn_serv(void)
 				listenaddr = ifn->listenaddrs[m];
 		}
 		if (listenaddr == NULL) {
-			printaddr(stderr, (struct sockaddr *)&peer->fsa, "could"
-			    " not find a suitable source address to connect to "
-			    "peer", "\n");
+			addrtostr(addrstr, sizeof(addrstr),
+			    (struct sockaddr *)&peer->fsa, 1);
+			logwarnx("could not find a suitable source address to "
+			    "connect to peer %s", addrstr);
 			continue;
 		}
 
@@ -2568,6 +2574,7 @@ peernew(uint32_t id, const char *name)
 static void
 recvconfig(int masterport)
 {
+	char addrstr[MAXIPSTR];
 	static union {
 		struct sinit init;
 		struct sifn ifn;
@@ -2690,10 +2697,11 @@ recvconfig(int masterport)
 		assert(smsg.cidraddr.ifnid == ifn->id);
 
 		if (getport(&smsg.cidraddr.addr) == 0) {
-			if (verbose > -1)
-				printaddr(stderr,
-				    (struct sockaddr *)&smsg.cidraddr.addr,
-				    "listenaddr without port", "\n");
+			if (verbose > -1) {
+				addrtostr(addrstr, sizeof(addrstr),
+				    (struct sockaddr *)&smsg.cidraddr.addr, 1);
+				logwarnx("listenaddr without port %s", addrstr);
+			}
 			continue;
 		}
 

@@ -317,40 +317,6 @@ addrtostr(char *out, size_t outsize, const struct sockaddr *sa, int noport)
 }
 
 /*
- * Print "pre", a string representation of the socket address and "post" on
- * "fp". "pre" and "post" are optional.
- *
- * Return 0 on success, or -1 on error without printing anything.
- */
-int
-printaddr(FILE *fp, const struct sockaddr *sa, const char *pre, const char *post)
-{
-	char host[NI_MAXHOST], serv[NI_MAXSERV];
-	int e;
-
-	if (fp == NULL || sa == NULL)
-		return -1;
-
-	e = getnameinfo(sa, sa->sa_len, host, sizeof(host), serv, sizeof(serv),
-	    NI_NUMERICHOST | NI_NUMERICSERV);
-	if (e)
-		return -1;
-
-	if (pre)
-		fprintf(fp, "%s ", pre);
-
-	if (sa->sa_family == AF_INET6)
-		fprintf(fp, "[%s]:%s", host, serv);
-	else
-		fprintf(fp, "%s:%s", host, serv);
-
-	if (post)
-		fprintf(fp, "%s", post);
-
-	return 0;
-}
-
-/*
  * Write an ipv6 address into "out". In order for any address to fit "out"
  * should be at least 40 bytes, but is always nul terminated even if the address
  * won't completely fit.

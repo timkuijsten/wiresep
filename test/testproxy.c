@@ -418,6 +418,7 @@ runcatcher(int ipc[2], int ifnwithprox, int enclwithprox)
 static void
 testproxy_init(int masterport)
 {
+	char addrstr[MAXIPSTR];
 	struct sockaddr_storage *listenaddr;
 	struct sigaction sa;
 	size_t i, m, n;
@@ -458,11 +459,9 @@ testproxy_init(int masterport)
 				logexit(1, "socket listenaddr");
 			if (bind(s, (struct sockaddr *)listenaddr,
 			    listenaddr->ss_len) == -1) {
-				if (verbose > -1)
-					printaddr(stderr,
-					    (struct sockaddr *)listenaddr,
-					    "bind failed:", "\n");
-				logexit(1, "bind");
+				addrtostr(addrstr, sizeof(addrstr),
+				    (struct sockaddr *)listenaddr, 0);
+				logexit(1, "bind failed: %s", addrstr);
 			}
 
 			len = MAXRECVBUF;
@@ -485,9 +484,9 @@ testproxy_init(int masterport)
 			sockmapv[i]->listenaddr = listenaddr;
 			i++;
 
-			if (verbose > 0)
-				printaddr(stderr, (struct sockaddr *)listenaddr,
-				    "listening", "\n");
+			addrtostr(addrstr, sizeof(addrstr),
+			    (struct sockaddr *)listenaddr, 0);
+			lognoticex("listening %s", addrstr);
 		}
 	}
 
