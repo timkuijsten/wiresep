@@ -797,6 +797,8 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 		return -1;
 	}
 
+	explicit_bzero(&msk, sizeof(msk));
+
 	return 0;
 }
 
@@ -872,6 +874,8 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 		    ifn->ifname);
 		return -1;
 	}
+
+	explicit_bzero(&msk, sizeof(msk));
 
 	return 0;
 }
