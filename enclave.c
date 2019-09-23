@@ -725,8 +725,8 @@ createhsresp(struct peer *peer, struct msgwgresp *mwr,
  *   if data authenticates
  *      determine peer if it's not given, verify if it's given
  *      if fsn and lsn are not null send MSGCONNREQ
- *      create and send MSGWGRESP
  *      send MSGSESSKEYS
+ *      create and send MSGWGRESP
  */
 static int
 handlewginit(struct ifn *ifn, struct peer *peer,
@@ -778,14 +778,6 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 		}
 	}
 
-	/* send MSGWGRESP to ifn */
-	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGWGRESP, mwr,
-	    sizeof(*mwr)) == -1) {
-		logwarnx("%s error sending MSGWGRESP to %s", __func__,
-		    ifn->ifname);
-		return -1;
-	}
-
 	/* send MSGSESSKEYS to ifn */
 	if (makemsgsesskeys(&msk, peer->hs, 1) == -1)
 		logexitx(1, "%s makemsgsesskeys", __func__);
@@ -798,6 +790,14 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 	}
 
 	explicit_bzero(&msk, sizeof(msk));
+
+	/* send MSGWGRESP to ifn */
+	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGWGRESP, mwr,
+	    sizeof(*mwr)) == -1) {
+		logwarnx("%s error sending MSGWGRESP to %s", __func__,
+		    ifn->ifname);
+		return -1;
+	}
 
 	return 0;
 }
@@ -956,8 +956,8 @@ handleifnmsg(const struct ifn *ifn)
  * MSGWGINIT
  *   if data authenticates, determine the appropriate interface:
  *      send MSGCONNREQ
- *      create and send MSGWGRESP
  *      send MSGSESSKEYS
+ *      create and send MSGWGRESP
  * MSGWGRESP
  *   if data authenticates, determine the appropriate interface:
  *      send MSGCONNREQ
