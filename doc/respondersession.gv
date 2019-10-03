@@ -1,0 +1,28 @@
+digraph G {
+	rankdir=LR
+
+	node [shape = doublecircle]
+		DATARECVD
+
+	node [shape = point ]
+		qi
+
+	node [shape = circle]
+
+		GOTKEYS   [ label = "1. GOTKEYS" ]
+		RESPSENT  [ label = "2. RESPSENT" ]
+		DATARECVD [ label = "new current\nsession" ]
+
+		qi        -> NONEXT
+		NONEXT    -> GOTKEYS   [ label = "valid WGINIT from peer\nSESSKEYS from enclave" ]
+		GOTKEYS   -> RESPSENT  [ label = "WGRESP from enclave" ]
+		RESPSENT  -> DATARECVD [ label = "WGDATA from peer" ]
+
+		RESPSENT  -> GOTKEYS [ label = "valid WGINIT from peer\nSESSKEYS from enclave" ]
+
+		DATARECVD -> NONEXT
+
+        labelloc = t
+	labeljust = l
+	label = "Responder session establishment\nVersion 0.1\l2019-10-03\l"
+}

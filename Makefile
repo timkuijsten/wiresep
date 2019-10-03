@@ -72,9 +72,29 @@ scfg.o: y.tab.c
 y.tab.c: scfg.y scfg.h
 	yacc scfg.y
 
-gv:
-	dot -Tpng doc/processdesign.gv -o doc/processdesign.png
-	dot -Tsvg doc/processdesign.gv -o doc/processdesign.svg
+processdesign.svg: doc/processdesign.gv
+	dot -Tsvg doc/processdesign.gv -o $@
+
+processdesign.png: doc/processdesign.gv
+	dot -Tpng doc/processdesign.gv -o $@
+
+initiatorsession.svg: doc/initiatorsession.gv
+	dot -Tsvg doc/initiatorsession.gv -o $@
+
+initiatorsession.png: doc/initiatorsession.gv
+	dot -Tpng doc/initiatorsession.gv -o $@
+
+respondersession.svg: doc/respondersession.gv
+	dot -Tsvg doc/respondersession.gv -o $@
+
+respondersession.png: doc/respondersession.gv
+	dot -Tpng doc/respondersession.gv -o $@
+
+dotsvg: processdesign.svg initiatorsession.svg respondersession.svg
+
+dotpng: processdesign.png initiatorsession.png respondersession.png
+
+dot: dotsvg dotpng
 
 testifn: tai64n.o blake2s-ref.o wireprot.o wiresep.o util.o scfg.o base64.o \
     parseconfig.o ifn.c test/testifn.c

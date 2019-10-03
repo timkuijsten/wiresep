@@ -76,101 +76,27 @@ typedef uint64_t utime_t;
 extern int background, verbose;
 
 /*
- * Four scenarios concerning sessions:
- *
- * 1. Send data (packet from tunnel device)
- *	if current session not usable
- *		queue packet
- *		reqhs
- * 	else
- *		send packet
- *		sendnonce++
- *		lastsent = now
- *		if (!deadline)
- *			deadline = now + Keepalive-Timeout + Rekey-Timeout
- *		if (iscurr(sess) && initiator && age(sess) >= Rekey-After-Time)
- *		    || sendnonce >= Rekey-After-Messages
- *			reqhs
- *
- * 2. Receive data (packet from server udp socket)
- *	if session not usable
- *		drop
- *	else
- *		deadline = 0
- *		forward packet to tunnel device
- *		keep-alive-timer = 10
- *		if initiator && age(sess) > 165
- *			reqhs
- *
- * 3. Keep-alive timeout (we are the sender of the last transport data message)
- *	if session not usable
- *		do nothing
- *	else
- *		send keep-alive packet
- *
- * 4. Receive keep-alive packet
- *	if session not usable
- *		do nothing
- *	else
- *		deadline = 0
- *
- * Session initiation:
- *
- * reqhs {
- *	if !tent
- *		tent = newsess
- *	if now - lasthsreq >= 5
- *		lasthsreq = now
- *		reqhsinit
- * }
- *
- * handlerekeytimeout {
- *	if now - start <= 90
- *		reqhsinit
- * }
- *
- * handlehsinitfromenclave {
- *	if lasthsreq > start
- *		clear rekeytimer
- *		start = now
- *
- *	if lastsent >= 5
- *		sendhsinit
- *		lastsent = now
- *
- *	if now - start <= 5
- *		rekeytimer = 5
- *	else if now - start <= 20
- *		rekeytimer = 10
- *	else if now - start <= 70
- *		rekeytimer = 20
- *	else
- *		destroy tent
- * }
- *
- * initnextsess {
- *	set next session ids
- *	start = now
- * }
- *
- * makesesscurr {
- *	prev = curr
- *	curr = sess
- *	clear sess
- * }
- *
- * sessusable(sess) {
- *	XXX maybe remove reject after time/message checks and assert they're
- *	destroyed after receiving/sending
- *	if sendnonce >= Reject-After-Messages
- *		return false
- *	if now - start(sess) > Reject-After-Time
- *		return false
- *	if deadline && now > deadline
- *		return false
- *	return true
- * }
+ * Used when we have data to send to a peer but no active current session. A
+ * rekey timer will be set until rekey-attempt-time or a session is established.
  */
+struct sesstent {
+	enum { INACTIVE, INITREQ, INITSENT, RESPRECVD } state;
+	int64_t id;
+	utime_t lastreq;
+};
+
+/*
+ * Used when a peer started negotiating a new session.
+ */
+struct sessnext {
+	enum { INACTIVE, GOTKEYS, RESPSENT } state;
+	utime_t lastvrfyinit;
+	utime_t start;
+	int64_t id;
+	int64_t peerid;
+	EVP_AEAD_CTX sendctx;
+	EVP_AEAD_CTX recvctx;
+};
 
 /*
  * The "start" field indicates when a session is started after the handshake
@@ -185,15 +111,13 @@ struct session {
 	struct peer *peer;
 	utime_t start;	/* whenever handshake completes (or first hs while still
 			 * tentative) */
-	utime_t lastsent;
-	utime_t deadline;
-	utime_t lasthsreq;	/* last handshake message request */
-	uint64_t sendnonce;
+	utime_t expack; /* time before either data or a keep alive is expected
+			 * from the peer */
+	uint64_t nextnonce; /* next number for the next packet to send */
 	uint32_t id;
 	uint32_t peerid;
 	char initiator;
 	char kaset;	/* is the keep-alive timer set? */
-	char keysset;	/* whether sendctx and recvctx are set */
 };
 
 struct cidraddr {
@@ -224,10 +148,10 @@ struct peer {
 	size_t prefixlen;
 	struct sockaddr_storage lsa; /* local and foreign socket name */
 	struct sockaddr_storage fsa;
-	struct session *sprev;
+	struct sesstent sesstent;
+	struct sessnext sessnext;
 	struct session *scurr;
-	struct session *snext;
-	struct session *stent; /* used during handshake */
+	struct session *sprev;
 	SIMPLEQ_HEAD(, qpacket) qpacketlist;
 	size_t qpackets;
 	size_t qpacketsdatasz;
@@ -302,16 +226,15 @@ logsessinfo(const char *pre, const struct session *sess)
 		return;
 	}
 
-	logwarnx("%s %c %08x:%08x %llu/%llu %lld %lld %lld %s",
+	logwarnx("%s %c %08x:%08x %llu/%llu %lld %lld %s",
 	    pre ? pre : "",
 	    sess->initiator ? 'I' : 'R',
 	    sess->id,
 	    sess->peerid,
 	    sess->arrecv.maxseqnum,
-	    sess->sendnonce,
+	    sess->nextnonce,
 	    sess->start,
-	    sess->lastsent,
-	    sess->deadline,
+	    sess->expack,
 	    sess->kaset ? "keep-alive" : "");
 }
 
@@ -344,8 +267,6 @@ logpeerinfo(const struct peer *peer)
 
 	logwarnx("  queue %zu %zu bytes", peer->qpackets, peer->qpacketsdatasz);
 
-	logsessinfo("  sess tent", peer->stent);
-	logsessinfo("  sess next", peer->snext);
 	logsessinfo("  sess curr", peer->scurr);
 	logsessinfo("  sess prev", peer->sprev);
 }
@@ -517,55 +438,33 @@ assignaddr(const char *ifname, const struct cidraddr *ca)
 }
 
 /*
- * Return 1 if "peer" has a session with "sessid", otherwise return 0.
- */
-static int
-peerhassessid(const struct peer *peer, uint32_t sessid)
-{
-	if (peer->scurr && sessid == peer->scurr->id)
-		return 1;
-
-	if (peer->snext && sessid == peer->snext->id)
-		return 1;
-
-	if (peer->stent && sessid == peer->stent->id)
-		return 1;
-
-	if (peer->sprev && sessid == peer->sprev->id)
-		return 1;
-
-	return 0;
-}
-
-/*
- * Find a peer by "sessid". Return 1 if found and updates "peer" and "sess" to
- * point to it. 0 if not found and updates "peer" and "sess" to NULL.
+ * Find a peer by "sessid". Return 1 if found and updates "peer" to point to it.
+ * 0 if not found.
  *
  * XXX log(n)
  */
 static int
-findpeerbysessid(uint32_t sessid, struct peer **peer, struct session **sess)
+findpeerbysessid(uint32_t sessid, struct peer **peer)
 {
 	struct peer *p;
-	*peer = NULL;
-	*sess = NULL;
 	size_t n;
 
 	for (n = 0; n < ifn->peerssize; n++) {
 		p = ifn->peers[n];
+		if (p->sesstent.id >= 0 && sessid == p->sesstent.id) {
+			*peer = p;
+			return 1;
+		}
+		if (p->sessnext.id >= 0 && sessid == p->sessnext.id) {
+			*peer = p;
+			return 1;
+		}
 		if (p->scurr && sessid == p->scurr->id) {
 			*peer = p;
-			*sess = p->scurr;
 			return 1;
 		}
 		if (p->sprev && sessid == p->sprev->id) {
 			*peer = p;
-			*sess = p->sprev;
-			return 1;
-		}
-		if (p->snext && sessid == p->snext->id) {
-			*peer = p;
-			*sess = p->snext;
 			return 1;
 		}
 	}
@@ -965,6 +864,27 @@ peerconnect(struct peer *p, const struct sockaddr_storage *lsa,
 }
 
 /*
+ * Schedule a one-shot timer.
+ *
+ * Note that if a timer with the same id is already set, this call has no
+ * effect. The existing timer will *not* be updated and a new timer will not be
+ * added.
+ */
+static void
+settimer(unsigned int id, utime_t usec)
+{
+	struct kevent ev;
+
+	EV_SET(&ev, id, EVFILT_TIMER, EV_ADD | EV_ONESHOT, 0, usec / 1000,
+	    NULL);
+
+	assert(kevent(kq, &ev, 1, NULL, 0, NULL) != -1);
+
+	if (verbose > 1)
+		loginfox("timer %x set to %llu milliseconds", id, usec / 1000);
+}
+
+/*
  * Clear a rekey or keep-alive timer.
  *
  * Return 0 on success, -1 on error with errno set.
@@ -983,29 +903,6 @@ cleartimer(unsigned int id)
 		loginfox("timer %u cleared", id);
 
 	return 0;
-}
-
-/*
- * Initialize a session for the given peer and role.
- *
- * All fields are initialized, except for id, peerid and start. These should be
- * set by the caller when known.
- */
-static void
-sessinit(struct session *sess, struct peer *peer, char initiator)
-{
-	sesscounter++;
-
-	sess->initiator = initiator;
-	sess->peer = peer;
-	sess->start = 0;
-	sess->kaset = 0;
-	sess->keysset = 0;
-	sess->deadline = 0;
-	sess->lastsent = 0;
-	sess->lasthsreq = 0;
-	sess->sendnonce = 0;
-	memset(&sess->arrecv, 0, sizeof(sess->arrecv));
 }
 
 /*
@@ -1032,48 +929,36 @@ notifyproxy(uint32_t peerid, uint32_t sessid, enum sessidtype type)
 }
 
 /*
- * Destroy keys and timers of a session. Also notify the proxy of the now
- * invalid session id.
+ * Wipe and securely free a current or previous session. Destroys keys, timers
+ * and notifies the proxy of the invalidated session id.
  *
- * Call this function whenever:
- * 1. session reaches time limit
- * 2. session reaches number-of-messages limit
- * 3. no session established after Rekey-Attempt-Time
+ * Call this function whenever a session reaches the time or number of messages
+ * limit.
  */
 static void
 sessdestroy(struct session *sess)
 {
 	uint32_t sessid, peerid;
 
-	if (sess == NULL)
-		return;
-
-	/*
-	 * Guard against explicit_bzeros of tent and next sessions.
-	 */
-	if (sess->peer == NULL)
-		return;
-
 	sessid = sess->id;
 	peerid = sess->peer->id;
 
-	if (sess->keysset) {
-		EVP_AEAD_CTX_cleanup(&sess->recvctx);
-		EVP_AEAD_CTX_cleanup(&sess->sendctx);
-	}
+	EVP_AEAD_CTX_cleanup(&sess->recvctx);
+	EVP_AEAD_CTX_cleanup(&sess->sendctx);
 
-	if (cleartimer(sess->id) == -1)
+	/*
+	 * The timer won't be set if it was a reject-timeout that triggered the
+	 * calling of this function.
+	 */
+	if (sess->kaset && cleartimer(sess->id) == -1)
 		logwarn("%s cleartimer %x", __func__, sess->id);
 
 	if (verbose > 1)
 		loginfox("%s %x %zu", __func__, sess->id, sesscounter);
 
-	explicit_bzero(sess, sizeof(struct session));
+	freezero(sess, sizeof(struct session));
 	sesscounter--;
 
-	/*
-	 * Notify the proxy that this id is no longer valid.
-	 */
 	if (notifyproxy(peerid, sessid, SESSIDDESTROY) == -1)
 		if (verbose > -1)
 			logwarnx("could not notify proxy of destroyed session "
@@ -1081,138 +966,204 @@ sessdestroy(struct session *sess)
 }
 
 /*
- * Request a new handshake init message from the enclave if the last request was
- * at least REKEY_TIMEOUT ago.
+ * Request a new handshake init message from the enclave.
  */
 static void
-reqhs(struct peer *peer)
+sendreqhsinit(struct peer *peer)
 {
 	struct msgreqwginit mri;
 
-	sessinit(peer->stent, peer, 1);
+	if (makemsgreqwginit(&mri) == -1)
+		logexitx(1, "%s makemsgreqwginit", __func__);
 
-	if (now - peer->stent->lasthsreq >= REKEY_TIMEOUT) {
-		peer->stent->lasthsreq = now;
-		if (makemsgreqwginit(&mri) == -1)
-			logexitx(1, "%s makemsgreqwginit", __func__);
-		if (wire_sendpeeridmsg(eport, peer->id, MSGREQWGINIT, &mri,
-		    sizeof(mri)) == -1)
-			logexitx(1, "error sending MSGREQWGINIT to enclave");
-	}
+	if (wire_sendpeeridmsg(eport, peer->id, MSGREQWGINIT, &mri, sizeof(mri))
+	    == -1)
+		logexitx(1, "error sending MSGREQWGINIT to enclave");
+
+	/*
+	 * Since the rekey timer is set by session id, we need one even though
+	 * the session id will be overwritten by one from the enclave later on.
+	 */
+	peer->sesstent.id = arc4random();
+	settimer(peer->sesstent.id, REKEY_TIMEOUT);
+
+	peer->sesstent.state = INITREQ;
 }
 
 /*
- * Request a new handshake init message from the enclave as long as within
- * REKEY_ATTEMPT_TIME.
+ * Request a new handshake init message from the enclave if none is currently
+ * pending.
  */
 static void
-handlerekeytimeout(const struct peer *peer)
+ensurehs(struct peer *peer)
 {
-	struct msgreqwginit mri;
+	if (peer->sesstent.state == INACTIVE)
+		sendreqhsinit(peer);
 
-	if (now - peer->stent->start <= REKEY_ATTEMPT_TIME) {
-		if (makemsgreqwginit(&mri) == -1)
-			logexitx(1, "%s makemsgreqwginit", __func__);
-		if (wire_sendpeeridmsg(eport, peer->id, MSGREQWGINIT, &mri,
-		    sizeof(mri)) == -1)
-			logexitx(1, "error sending MSGREQWGINIT to enclave");
-	}
+	peer->sesstent.lastreq = now;
 }
 
 /*
- * Determine if a session can be used for sending and receiving data. We always
- * should receive something from our peer within the next 15 seconds after we've
+ * Determine if a current or previous session can be used for sending or
+ * receiving data. There are time based and message based limits, as well as
+ * an expected keep-alive from our peer within the next 15 seconds after we've
  * sent data.
  *
- * Return 1 if the session is usable, 0 if not.
+ * Return 1 if the session is still active, 0 if not.
  */
 static int
-sessusable(const struct session *sess)
+sessactive(const struct session *sess)
 {
 	if (!sess)
 		return 0;
 
-	if (sess->sendnonce >= REJECT_AFTER_MESSAGES)
+	if (sess->expack > 0 && sess->expack < now)
 		return 0;
 
-	if (now - sess->start > REJECT_AFTER_TIME)
+	if (REJECT_AFTER_TIME < now - sess->start)
 		return 0;
 
-	if (sess->deadline > 0 && now > sess->deadline)
+	if (REJECT_AFTER_MESSAGES < sess->nextnonce)
 		return 0;
 
 	return 1;
 }
 
 /*
- * Copy "sess" into the current slot and erase "sess" safely. If a current
- * session already exists, roll it into prev, if a previous session exists,
- * destroy and free it. Also notify the proxy of the new current session.
- *
- * Return the new current session on success, or NULL on error.
+ * Clear the tentative session.
  */
-static struct session *
-makesesscurr(struct session *sess)
+static void
+sesstentclear(struct peer *peer, int timerset)
 {
-	struct peer *peer;
+	if (timerset && cleartimer(peer->sesstent.id) == -1)
+		logwarn("%s error %x", __func__, peer->sesstent.id);
 
-	if (verbose > 1)
-		loginfox("%s %x", __func__, sess->id);
+	peer->sesstent.state = INACTIVE;
+	peer->sesstent.id = -1;
+	peer->sesstent.lastreq = 0;
+}
 
-	peer = sess->peer;
+static void
+sessnextclear(struct peer *peer, int keysset)
+{
+	if (keysset) {
+		EVP_AEAD_CTX_cleanup(&peer->sessnext.recvctx);
+		EVP_AEAD_CTX_cleanup(&peer->sessnext.sendctx);
+	}
 
-	/*
-	 * Clear the handshake rekey-timeout timer in case this was a tentative
-	 * session.
-	 */
-	if (cleartimer(sess->id) == -1)
-		return NULL;
+	if (notifyproxy(peer->id, peer->sessnext.id, SESSIDDESTROY)
+	    == -1)
+		if (verbose > -1)
+			logwarnx("could not notify proxy of erased next"
+			    "session");
 
+	explicit_bzero(&peer->sessnext, sizeof(peer->sessnext));
+	peer->sessnext.id = -1;
+}
+
+/*
+ * Initialize a newly allocated current slot based on the "peer"s next session.
+ * If a current session already exists, roll it into prev, if a previous session
+ * exists, destroy and free it.
+ *
+ * Allocate new memory to randomize the position on the heap.
+ *
+ * Return 0 on success and -1 on error with errno set.
+ */
+static int
+rollcurrsess(struct peer *peer)
+{
 	if (peer->sprev) {
 		sessdestroy(peer->sprev);
-		freezero(peer->sprev, sizeof(struct session));
 		peer->sprev = NULL;
 	}
 
 	peer->sprev = peer->scurr;
 
-	peer->scurr = malloc(sizeof(struct session));
-	if (peer->scurr == NULL)
-		logexitx(1, "%s malloc", __func__);
+	if ((peer->scurr = malloc(sizeof(struct session))) == NULL)
+		return -1;
 
-	memcpy(peer->scurr, sess, sizeof(*sess));
+	return 0;
+}
 
-	/*
-	 * Don't destroy the session, just erase this part from memory so that
-	 * the credentials are only available in the newly allocated memory.
-	 */
-	explicit_bzero(sess, sizeof(struct session));
+/*
+ * Initialize a newly allocated current slot based on the "peer"s tent session.
+ * If a current session already exists, roll it into prev, if a previous session
+ * exists, destroy and free it. Also notify the proxy of the new current
+ * session.
+ *
+ * Return 0 on success, -1 on failure.
+ */
+static int
+maketentcurr(struct peer *peer, const struct msgsesskeys *msk)
+{
+	if (rollcurrsess(peer) == -1)
+		return -1;
+
+	peer->scurr->initiator = 1;
+	peer->scurr->id = peer->sesstent.id;
+	peer->scurr->peerid = le32toh(msk->peersessid);
+	peer->scurr->start = now;
+	peer->scurr->peer = peer;
+	peer->scurr->kaset = 0;
+	peer->scurr->expack = 0;
+	peer->scurr->nextnonce = 0;
+	memset(&peer->scurr->arrecv, 0, sizeof(peer->scurr->arrecv));
+
+	if (EVP_AEAD_CTX_init(&peer->scurr->sendctx, aead,
+	    msk->sendkey, KEYLEN, TAGLEN, NULL) == 0)
+		return -1;
+
+	if (EVP_AEAD_CTX_init(&peer->scurr->recvctx, aead,
+	    msk->recvkey, KEYLEN, TAGLEN, NULL) == 0)
+		return -1;
+
+	sesstentclear(peer, 1);
 
 	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
 		if (verbose > -1)
 			logwarnx("%s: could not notify proxy", __func__);
 
-	return peer->scurr;
+	return 0;
 }
 
 /*
- * Schedule a one-shot timer.
+ * Initialize a newly allocated current slot based on the "peer"s next session.
+ * If a current session already exists, roll it into prev, if a previous session
+ * exists, destroy and free it. Also notify the proxy of the new current
+ * session.
  *
- * Note that if a timer with the same id is already set, this call has no
- * effect. The existing timer will *not* be updated and a new timer will not be
- * added.
+ * Return 0 on success, -1 on failure.
  */
-static void
-settimer(unsigned int id, utime_t usec)
+static int
+makenextcurr(struct peer *peer)
 {
-	struct kevent ev;
+	if (rollcurrsess(peer) == -1)
+		return -1;
 
-	EV_SET(&ev, id, EVFILT_TIMER, EV_ADD | EV_ONESHOT, 0, usec / 1000,
-	    NULL);
-	assert(kevent(kq, &ev, 1, NULL, 0, NULL) != -1);
+	peer->scurr->initiator = 0;
+	peer->scurr->id = peer->sessnext.id;
+	peer->scurr->peerid = peer->sessnext.peerid;
+	peer->scurr->start = peer->sessnext.start;
+	peer->scurr->peer = peer;
+	peer->scurr->kaset = 0;
+	peer->scurr->expack = 0;
+	peer->scurr->nextnonce = 0;
+	memset(&peer->scurr->arrecv, 0, sizeof(peer->scurr->arrecv));
+	memcpy(&peer->scurr->sendctx, &peer->sessnext.sendctx,
+	    sizeof(peer->sessnext.sendctx));
+	memcpy(&peer->scurr->recvctx, &peer->sessnext.recvctx,
+	    sizeof(peer->sessnext.recvctx));
 
-	if (verbose > 1)
-		loginfox("timer %x set to %llu milliseconds", id, usec / 1000);
+	explicit_bzero(&peer->sessnext, sizeof(peer->sessnext));
+	peer->sessnext.id = -1;
+	peer->sessnext.peerid = -1;
+
+	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
+		if (verbose > -1)
+			logwarnx("%s: could not notify proxy", __func__);
+
+	return 0;
 }
 
 /*
@@ -1287,31 +1238,31 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 		padlen = outsize;
 	}
 
-	*(uint64_t *)&nonce[4] = htole64(sess->sendnonce);
+	*(uint64_t *)&nonce[4] = htole64(sess->nextnonce);
 	if (EVP_AEAD_CTX_seal(&sess->sendctx, out, &outsize, outsize, nonce,
 	    sizeof(nonce), in, padlen, NULL, 0) == 0) {
 		stats.sockouterr++;
 		return -1;
 	}
 
-	if (sendwgdatamsg(sess->peer->s, sess->peerid, sess->sendnonce, out,
+	if (sendwgdatamsg(sess->peer->s, sess->peerid, sess->nextnonce, out,
 	    outsize) == -1)
 		logexitx(1, "error sending data to %s", sess->peer->name);
 
 	stats.sockout++;
 	stats.sockoutsz += outsize;
 
-	sess->lastsent = now;
-	sess->sendnonce++;
+	sess->nextnonce++;
 
 	if (sess->kaset) {
 		if (cleartimer(sess->id) == -1)
 			return -1;
+
 		sess->kaset = 0;
 	}
 
-	if (insize > 0 && sess->deadline == 0)
-		sess->deadline = now + KEEPALIVE_TIMEOUT + REKEY_TIMEOUT;
+	if (insize > 0 && sess->expack == 0)
+		sess->expack = now + KEEPALIVE_TIMEOUT + REKEY_TIMEOUT;
 
 	if (verbose > 1)
 		loginfox("encapsulated %zu bytes into %zu for %s", padlen,
@@ -1321,54 +1272,14 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 	 * Handle session limits.
 	 */
 
-	if (sess->sendnonce == REJECT_AFTER_MESSAGES) {
-		if (verbose > 1)
-			loginfox("%s REJECT_AFTER_MESSAGES %lld", __func__,
-			    sess->sendnonce);
-
-		/* session reaches number-of-messages limit */
-		if (sess->peer->scurr == sess) {
-			sessdestroy(sess);
-			freezero(sess, sizeof(struct session));
-			sess = sess->peer->scurr = NULL;
-		} else if (sess->peer->sprev == sess) {
-			sessdestroy(sess);
-			freezero(sess, sizeof(struct session));
-			sess = sess->peer->sprev = NULL;
-		} else {
-			abort();
-		}
-		return 0;
-	}
-
-	if (sess->start < now - REJECT_AFTER_TIME) {
-		if (verbose > 1)
-			loginfox("%s REJECT_AFTER_TIME %lld", __func__,
-			    sess->start);
-
-		/* session reaches time limit */
-		if (sess->peer->scurr == sess) {
-			sessdestroy(sess);
-			freezero(sess, sizeof(struct session));
-			sess = sess->peer->scurr = NULL;
-		} else if (sess->peer->sprev == sess) {
-			sessdestroy(sess);
-			freezero(sess, sizeof(struct session));
-			sess = sess->peer->sprev = NULL;
-		} else {
-			abort();
-		}
-		return 0;
-	}
-
-	if (sess->sendnonce == REKEY_AFTER_MESSAGES) {
-		reqhs(sess->peer);
+	if (sess->nextnonce == REKEY_AFTER_MESSAGES) {
+		ensurehs(sess->peer);
 		return 0;
 	}
 
 	if (sess->initiator && sess->start <= now - REKEY_AFTER_TIME &&
 	    sess == sess->peer->scurr) {
-		reqhs(sess->peer);
+		ensurehs(sess->peer);
 		return 0;
 	}
 
@@ -1376,37 +1287,26 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 }
 
 /*
- * Decrypt data, forward to tunnel, update session and rotate to current if
- * next.
+ * Decrypt a packet and send it to the tunnel device.
  *
- * Return 0 on success, -1 on failure.
+ * Returns the payload size of the packet on success, -1 otherwise.
  */
-static int
+static ssize_t
 decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
-    size_t mwdsize, struct session *sess, int isnext)
+    size_t mwdsize, const struct peer *peer, EVP_AEAD_CTX *key,
+    uint32_t peersessid)
 {
-	struct ip *ip4;
-	struct ip6_hdr *ip6hdr;
-	uint64_t counter;
 	uint8_t *payload;
 	size_t payloadsize;
 	struct peer *routedpeer;
+	struct ip *ip4;
+	struct ip6_hdr *ip6hdr;
 
 	if (outsize < TUNHDRSIZ + MAXIPHDR) {
 		stats.corrupted++;
 		return -1;
 	}
 	if (outsize < mwdsize) {
-		stats.corrupted++;
-		return -1;
-	}
-
-	counter = le64toh(mwdhdr->counter);
-
-	if (!antireplay_isnew(&sess->arrecv, counter)) {
-		if (verbose > -1)
-			logwarnx("data replayed %llu %llu", counter,
-			    sess->arrecv.maxseqnum);
 		stats.corrupted++;
 		return -1;
 	}
@@ -1419,13 +1319,11 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	/* prepend a tunnel header */
 	outsize -= TUNHDRSIZ;
 	*(uint64_t *)&nonce[4] = mwdhdr->counter;
-	if (EVP_AEAD_CTX_open(&sess->recvctx, &out[TUNHDRSIZ], &outsize,
-	    outsize, nonce, sizeof(nonce), payload, payloadsize, NULL, 0)
-	    == 0) {
+	if (EVP_AEAD_CTX_open(key, &out[TUNHDRSIZ], &outsize, outsize, nonce,
+	    sizeof(nonce), payload, payloadsize, NULL, 0) == 0) {
 		logwarnx("unauthenticated data received, UDP data: %zu, WG "
-		    "data: %zu, session id: %u, peer id: %u, counter: %llu",
-		    mwdsize, payloadsize, sess->id, sess->peerid,
-		    counter);
+		    "data: %zu, peer session id: counter: %llu", mwdsize,
+		    payloadsize, peersessid, le64toh(mwdhdr->counter));
 		stats.corrupted++;
 		return -1;
 	}
@@ -1456,16 +1354,16 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 					    1);
 					logwarnx("valid packet from %s with "
 					    "an invalid source ip received: %s",
-					    sess->peer->name, msg);
+					    peer->name, msg);
 				}
 				stats.invalidpeer++;
 				return -1;
 			}
-			if (routedpeer->id != sess->peer->id) {
+			if (routedpeer->id != peer->id) {
 				if (verbose > -1)
 					logwarnx("valid packet from %s with a "
 					    "source address of %s received",
-					    sess->peer->name, routedpeer->name);
+					    peer->name, routedpeer->name);
 				stats.invalidpeer++;
 				return -1;
 			}
@@ -1483,16 +1381,16 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 				if (verbose > -1)
 					logwarnx("valid packet from %s with an "
 					    "invalid source ip received: %s",
-					    sess->peer->name,
+					    peer->name,
 					    inet_ntoa(ip4->ip_src));
 				stats.invalidpeer++;
 				return -1;
 			}
-			if (routedpeer->id != sess->peer->id) {
+			if (routedpeer->id != peer->id) {
 				if (verbose > -1)
 					logwarnx("valid packet from %s with a"
 					    " source address of %s received",
-					    sess->peer->name, routedpeer->name);
+					    peer->name, routedpeer->name);
 				stats.invalidpeer++;
 				return -1;
 			}
@@ -1507,90 +1405,139 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 			return -1;
 		}
 
-		if (writen(tund, out, outsize) != 0)
+		if (writen(tund, out, outsize) != 0) {
 			logwarn("writen tund");
+			stats.devouterr++;
+			return -1;
+		}
 
 		stats.devout++;
 		stats.devoutsz += outsize;
-
-		/*
-		 * Since this was not a keepalive packet, ensure a keepalive
-		 * timeout is scheduled.
-		 */
-		if (!sess->kaset) {
-			settimer(sess->id, KEEPALIVE_TIMEOUT);
-			sess->kaset = 1;
-		}
 	}
 
-	/* SUCCESS */
+	return payloadsize;
+}
+
+/*
+ * Handle the first packet of a next session. Decrypt data, forward to tunnel
+ * and rotate session to current.
+ *
+ * Return 0 on success, -1 on failure.
+ */
+static int
+handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
+    size_t mwdsize, struct peer *peer)
+{
+	ssize_t payloadsize;
+
+	if (peer->sessnext.start < now - REJECT_AFTER_TIME) {
+		if (verbose > -1)
+			logwarnx("first packet for next session arrived too "
+			    "late", peer->name);
+
+		sessnextclear(peer, 1);
+		return 0;
+	}
+
+	payloadsize = decryptandfwd(out, outsize, mwdhdr, mwdsize, peer,
+	    &peer->sessnext.recvctx, peer->sessnext.peerid);
+
+	if (payloadsize < 0)
+		return -1;
+
+	if (payloadsize < MINIPHDR)
+		loginfox("%s unexpected keep-alive at start of next sesssion",
+		    __func__);
+
+	/* 4. handlewgdatafrompeer part 2/2 */
+	if (makenextcurr(peer) == -1) {
+		if (verbose > -1)
+			logwarnx("could not make next session of %s "
+			    "current", peer->name);
+
+		stats.invalidpeer++;
+		return -1;
+	}
+
 	if (verbose > 1)
-		loginfox("%s: %x %zu bytes", sess->peer->name, sess->id,
+		loginfox("%s: %x %zu bytes", peer->name, peer->scurr->id,
 		    payloadsize);
 
-	/*
-	 * Update session, rotate keys if this is the next session and handle
-	 * limits.
-	 */
+	return 0;
+}
+
+/*
+ * Handle data of an established session (either curr or prev).
+ * Decrypt data, forward to tunnel and update session.
+ *
+ * Return 0 on success, -1 on failure.
+ */
+static int
+handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
+    size_t mwdsize, struct session *sess)
+{
+	uint64_t counter;
+	ssize_t payloadsize;
+
+	if (!sessactive(sess)) {
+		logwarnx("data for unusable session received %x",
+		    le32toh(mwdhdr->receiver));
+		stats.sockinerr++;
+		return -1;
+	}
+
+	counter = le64toh(mwdhdr->counter);
+
+	if (!antireplay_isnew(&sess->arrecv, counter)) {
+		if (verbose > -1)
+			logwarnx("data replayed %llu %llu", counter,
+			    sess->arrecv.maxseqnum);
+
+		stats.corrupted++;
+		return -1;
+	}
+
+	payloadsize = decryptandfwd(out, outsize, mwdhdr, mwdsize, sess->peer,
+	    &sess->recvctx, sess->peerid);
+
+	if (payloadsize < 0)
+		return -1;
+
+	sess->expack = 0;
 
 	if (antireplay_update(&sess->arrecv, counter) == -1) {
 		logwarnx("antireplay_update %llu", counter);
 		return -1;
 	}
 
-	sess->deadline = 0;
-
-	if (isnext)
-		sess = makesesscurr(sess);
-
-	if (sess->arrecv.maxseqnum == REJECT_AFTER_MESSAGES) {
-		if (verbose > 1)
-			loginfox("%s REJECT_AFTER_MESSAGES %lld", __func__,
-			    sess->arrecv.maxseqnum);
-
-		/* session reaches number-of-messages limit */
-		if (sess->peer->scurr == sess) {
-			sessdestroy(sess);
-			freezero(sess, sizeof(struct session));
-			sess = sess->peer->scurr = NULL;
-		} else if (sess->peer->sprev == sess) {
-			sessdestroy(sess);
-			freezero(sess, sizeof(struct session));
-			sess = sess->peer->sprev = NULL;
-		} else {
-			abort();
+	/*
+	 * Write authenticated and decrypted packet to the tunnel device if it's
+	 * an ip4 or ip6 packet. Otherwise treat it as a keepalive.
+	 */
+	if (payloadsize >= MINIPHDR) {
+		/*
+		 * Schedule a keepalive timeout if this was not already the case
+		 * and only if we're not near the end of the session.
+		 */
+		if (sess->kaset == 0 &&
+		    now - sess->start < REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT &&
+		    sess->nextnonce < REJECT_AFTER_MESSAGES) {
+			settimer(sess->id, KEEPALIVE_TIMEOUT);
+			sess->kaset = 1;
 		}
-		return 0;
 	}
 
-	if (sess->start < now - REJECT_AFTER_TIME) {
-		if (verbose > 1)
-			loginfox("%s REJECT_AFTER_TIME %lld", __func__,
-			    sess->start);
-
-		/* session reaches time limit */
-		if (sess->peer->scurr == sess) {
-			sessdestroy(sess);
-			freezero(sess, sizeof(struct session));
-			sess = sess->peer->scurr = NULL;
-		} else if (sess->peer->sprev == sess) {
-			sessdestroy(sess);
-			freezero(sess, sizeof(struct session));
-			sess = sess->peer->sprev = NULL;
-		} else {
-			abort();
-		}
-		return 0;
-	}
-
-	if (sess->arrecv.maxseqnum == REKEY_AFTER_MESSAGES) {
-		reqhs(sess->peer);
-		return 0;
-	}
-
-	if (sess->initiator && sess->start < now -
+	/*
+	 * Start a new handshake procedure if this is a current session and we
+	 * are the initiator and the end of this session is near.
+	 */
+	if (sess->initiator && sess == sess->peer->scurr && now - sess->start >=
 	    (REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT - REKEY_TIMEOUT))
-		reqhs(sess->peer);
+		ensurehs(sess->peer);
+
+	if (verbose > 1)
+		loginfox("%s: %x %zd bytes", sess->peer->name, sess->id,
+		    payloadsize);
 
 	return 0;
 }
@@ -1614,7 +1561,6 @@ static int
 handleenclavemsg(void)
 {
 	struct qpacket *qp;
-	struct session *sess;
 	struct msgconnreq *mcr;
 	struct msgwginit *mwi;
 	struct msgwgresp *mwr;
@@ -1624,7 +1570,6 @@ handleenclavemsg(void)
 	size_t msgsize;
 	ssize_t rc;
 	unsigned char mtcode;
-	long sincestart;
 
 	msgsize = sizeof(msg);
 	if (wire_recvpeeridmsg(eport, &peerid, &mtcode, msg, &msgsize)
@@ -1638,80 +1583,76 @@ handleenclavemsg(void)
 
 	switch (mtcode) {
 	case MSGWGINIT:
+		/* 1. handlewginitfromenclave */
 		mwi = (struct msgwginit *)msg;
 
-		assert(p->stent);
-		sess = p->stent;
+		if (p->sesstent.state == INITREQ) {
+			/*
+			 * Reset timer and set session id to the one from the
+			 * enclave.
+			 */
+			if (cleartimer(p->sesstent.id) == -1)
+				logwarn("%s rekey timer for %x not set",
+				    __func__, p->sesstent.id);
 
-		if (sess->lasthsreq > sess->start) {
-			sess->start = now;
-			sess->lastsent = 0;
-		}
+			p->sesstent.id = le32toh(mwi->sender);
+			settimer(p->sesstent.id, REKEY_TIMEOUT);
 
-		if (now - sess->lastsent >= REKEY_TIMEOUT) {
 			rc = write(p->s, msg, msgsize);
 			if (rc < 0)
 				logexit(1, "%s write MSGWGINIT", __func__);
+
 			if ((size_t)rc != msgsize)
 				logexitx(1, "%s write MSGWGINIT %zd", __func__,
 				    rc);
+
+			p->sesstent.state = INITSENT;
 
 			stats.initout++;
 			stats.sockout++;
 			stats.sockoutsz += msgsize;
 
-			sess->id = le32toh(mwi->sender);
-			sess->lastsent = now;
-
-			if (notifyproxy(p->id, sess->id, SESSIDTENT) == -1)
-				if (verbose > -1)
-					logwarnx("could not notify proxy of "
-					    "tent session id");
-		}
-
-		/* set timeout */
-		sincestart = now - sess->start;
-
-		/* backoff: time:timeout
-		 * 0:5 5:5 10:10 20:10 30:19 50:19 70:19 90:done
-		 */
-		if (sincestart <= REKEY_TIMEOUT) {
-			settimer(sess->id, REKEY_TIMEOUT);
-		} else if (sincestart <= REKEY_TIMEOUT * 4) {
-			settimer(sess->id, REKEY_TIMEOUT * 2);
-		} else if (sincestart <= REKEY_TIMEOUT * 15) {
-			settimer(sess->id, REKEY_TIMEOUT * 4 - 1000);
+			if (notifyproxy(p->id, p->sesstent.id, SESSIDTENT)
+			    == -1)
+				logwarnx("could not notify proxy of tent "
+				    "session id");
 		} else {
-			if (verbose > 1)
-				loginfox("%s REKEY_TIMEOUT %lld", __func__,
-				    sincestart);
-
-			/* no session established after Rekey-Attempt-Time */
-			sessdestroy(p->stent);
+			lognoticex("WGINIT from enclave not needed, %d %lld %d",
+			    p->sesstent.state, p->sesstent.id,
+			    le32toh(mwi->sender));
 		}
 		break;
 	case MSGWGRESP:
-		/*
-		 * A peer initiated a handshake. Initialize a new unconfirmed
-		 * session in the next slot after destroying a previous "next"
-		 * session.
-		 * Only transmit data using this session as soon as the peer has
-		 * sent some data. Only then we are guaranteed the peer is
-		 * currently in possession of the private key. At this time
-		 * there is still a possibility in where a man-in-the-middle has
-		 * our private key, but not the peers private key.
-		 */
+		/* 3. handlewgrespfromenclave */
 
 		mwr = (struct msgwgresp *)msg;
 
-		if (verbose > 1)
-			loginfox("%s received new handshake", __func__);
+		if (p->sessnext.state != GOTKEYS) {
+			if (verbose > -1)
+				logwarnx("unexpectedly received wgresp message "
+				    "from the enclave %d", p->sessnext.state);
 
-		sessdestroy(p->snext);
-		sessinit(p->snext, p, 0);
-		p->snext->id = le32toh(mwr->sender);
+			stats.sockouterr++;
+			stats.respouterr++;
+			return -1;
+		}
 
-		if (notifyproxy(p->id, p->snext->id, SESSIDNEXT) == -1)
+		if (p->sessnext.peerid != le32toh(mwr->receiver)) {
+			if (verbose > -1)
+				logwarnx("wgresp message from enclave does not "
+				    "match last received authenticated "
+				    "response: %zu to %zu", p->sessnext.peerid,
+				    le32toh(mwr->receiver));
+
+			stats.sockouterr++;
+			stats.respouterr++;
+			return -1;
+		}
+
+		p->sessnext.start = now;
+		p->sessnext.state = RESPSENT;
+
+		if (notifyproxy(p->id, p->sessnext.id, SESSIDNEXT) == -1)
 			if (verbose > -1)
 				logwarnx("could not notify proxy of next "
 				    "session id");
@@ -1745,67 +1686,99 @@ handleenclavemsg(void)
 		break;
 	case MSGSESSKEYS:
 		msk = (struct msgsesskeys *)msg;
-		sess = NULL;
-		if (p->stent && p->stent->id == msk->sessid) {
-			sess = makesesscurr(p->stent);
-		} else if (p->snext && p->snext->id == msk->sessid) {
-			sess = p->snext;
-		} else {
-			logexitx(1, "MSGSESSKEYS unknown session id from "
-			    "enclave");
-		}
-
-		/*
-		 * Finalize session.
-		 */
-
-		if (EVP_AEAD_CTX_init(&sess->sendctx, aead, msk->sendkey,
-		    KEYLEN, TAGLEN, NULL) == 0) {
-			stats.enclinerr++;
-			return -1;
-		}
-
-		if (EVP_AEAD_CTX_init(&sess->recvctx, aead, msk->recvkey,
-		    KEYLEN, TAGLEN, NULL) == 0) {
-			stats.enclinerr++;
-			return -1;
-		}
-
-		sess->keysset = 1;
-		sess->peerid = le32toh(msk->peersessid);
-		sess->start = now;
-
-		if (verbose > 1)
-			loginfox("new session %x with %s %s %x",
-			    sess->id,
-			    sess->initiator ? "responder" : "initiator" ,
-			    sess->peer->name,
-			    sess->peerid);
-
-		/* Only the initiator may start sending data right away */
-		if (sess->initiator && p->qpackets > 0) {
-			while (!SIMPLEQ_EMPTY(&sess->peer->qpacketlist)) {
-				qp = SIMPLEQ_FIRST(&sess->peer->qpacketlist);
-				rc = encryptandsend(msg, sizeof(msg), qp->data,
-				    qp->datasize, sess);
-
-				if (rc == -1) {
-					stats.sockouterr++;
-					stats.queueouterr++;
-				} else {
-					stats.queueout++;
-					stats.queueoutsz += qp->datasize;
-				}
-				SIMPLEQ_REMOVE_HEAD(&sess->peer->qpacketlist,
-				    qpackets);
-				p->qpackets--;
-				p->qpacketsdatasz -= qp->datasize;
-				free(qp->data);
-				qp->data = NULL;
-				qp->datasize = 0;
-				free(qp);
+		if (p->sesstent.id == msk->sessid) {
+			/* 3. handlesesskeys */
+			if (p->sesstent.state != RESPRECVD) {
+				logwarnx("MSGSESSKEYS from enclave for "
+				    "initiator role unexpected");
+				stats.enclinerr++;
+				return -1;
 			}
+
+			if (maketentcurr(p, msk) == -1) {
+				logwarnx("failed to make tentative session the "
+				    "current session");
+				stats.sockouterr++;
+				return -1;
+			}
+
+			if (verbose > 1)
+				loginfox("new initiator session %x with %s %x",
+				    p->scurr->id,
+				    p->scurr->peer->name,
+				    p->scurr->peerid);
+
+			if (p->qpackets > 0) {
+				while (!SIMPLEQ_EMPTY(&p->qpacketlist)) {
+					qp = SIMPLEQ_FIRST(&p->qpacketlist);
+					rc = encryptandsend(msg, sizeof(msg), qp->data,
+					    qp->datasize, p->scurr);
+
+					if (rc == -1) {
+						stats.sockouterr++;
+						stats.queueouterr++;
+					} else {
+						stats.queueout++;
+						stats.queueoutsz += qp->datasize;
+					}
+					SIMPLEQ_REMOVE_HEAD(&p->qpacketlist,
+					    qpackets);
+					p->qpackets--;
+					p->qpacketsdatasz -= qp->datasize;
+					free(qp->data);
+					qp->data = NULL;
+					qp->datasize = 0;
+					free(qp);
+				}
+			}
+		} else {
+			/* 2. handlekeysfromenclave */
+			if (p->sessnext.state != INACTIVE &&
+			    p->sessnext.state != RESPSENT) {
+				logwarnx("MSGSESSKEYS from enclave for "
+				    "responder role unexpected");
+				stats.enclinerr++;
+				return -1;
+			}
+
+			/*
+			 * XXX use time submitted when forwarding the
+			 * corresponding wgresp message to the enclave instead
+			 * of a hardcoded value of 2.
+			 */
+			p->sessnext.lastvrfyinit = now - 2;
+			p->sessnext.id = msk->sessid;
+			p->sessnext.peerid = msk->peersessid;
+			p->sessnext.state = GOTKEYS;
+
+			if (EVP_AEAD_CTX_init(&p->sessnext.sendctx, aead,
+			    msk->sendkey, KEYLEN, TAGLEN, NULL) == 0) {
+				stats.enclinerr++;
+				return -1;
+			}
+
+			if (EVP_AEAD_CTX_init(&p->sessnext.recvctx, aead,
+			    msk->recvkey, KEYLEN, TAGLEN, NULL) == 0) {
+				stats.enclinerr++;
+				return -1;
+			}
+
+			/*
+			 * Only transmit data using this session as soon as the
+			 * peer has sent some data. Only then we are guaranteed
+			 * the peer is currently in possession of the private
+			 * key. At this time there is still a possibility in
+			 * where a man-in-the-middle has our private key, but
+			 * not the peers private key.
+			 */
+
+			if (verbose > 1)
+				loginfox("new responder session %x with %s %x",
+				    p->sessnext.id,
+				    p->name,
+				    p->sessnext.peerid);
 		}
+
 		break;
 	default:
 		logexitx(1, "enclave sent an unexpected message %c", mtcode);
@@ -1918,7 +1891,10 @@ handletundmsg(void)
 		}
 	}
 
-	if (!sessusable(p->scurr)) {
+	if (sessactive(p->scurr)) {
+		return encryptandsend(msg, sizeof(msg), &msg[TUNHDRSIZ],
+		    msgsize - TUNHDRSIZ, p->scurr);
+	} else {
 		if (p->qpackets >= MAXQUEUEPACKETS) {
 			stats.sockouterr++;
 			stats.queueinerr++;
@@ -1949,16 +1925,50 @@ handletundmsg(void)
 
 		memcpy(qp->data, &msg[TUNHDRSIZ], qp->datasize);
 		SIMPLEQ_INSERT_TAIL(&p->qpacketlist, qp, qpackets);
+
 		p->qpackets++;
 		p->qpacketsdatasz += qp->datasize;
+
 		stats.queuein++;
 		stats.queueinsz += qp->datasize;
-		reqhs(p);
+
+		ensurehs(p);
+
 		return -1;
 	}
+}
 
-	return encryptandsend(msg, sizeof(msg), &msg[TUNHDRSIZ],
-	    msgsize - TUNHDRSIZ, p->scurr);
+/*
+ * Handle an incoming WGDATA msg. Find session and try to authenticate and
+ * decrypt.
+ */
+static int
+handlewgdata(struct msgwgdatahdr *mwdhdr, size_t msgsize, struct peer *p)
+{
+	uint32_t receiver;
+
+	receiver = le32toh(mwdhdr->receiver);
+	if (receiver == p->sessnext.id) {
+		if (p->sessnext.state != RESPSENT) {
+			logwarnx("data received for next session while"
+			    " in unexpected state %x %d", receiver,
+			    p->sessnext.state);
+			stats.sockinerr++;
+			return -1;
+		}
+
+		return handlenextdata(msg, sizeof(msg), mwdhdr, msgsize, p);
+	} else if (p->scurr && receiver == p->scurr->id) {
+		return handlesessdata(msg, sizeof(msg), mwdhdr, msgsize,
+		    p->scurr);
+	} else if (p->sprev && receiver == p->sprev->id) {
+		return handlesessdata(msg, sizeof(msg), mwdhdr, msgsize,
+		    p->sprev);
+	}
+
+	logwarnx("data with unknown session received %x", receiver);
+	stats.sockinerr++;
+	return -1;
 }
 
 /*
@@ -1980,13 +1990,9 @@ handlesocketmsg(struct peer *p)
 {
 	struct msgwginit *mwi;
 	struct msgwgresp *mwr;
-	struct msgwgdatahdr *mwdhdr;
-	struct session *sess;
 	ssize_t rc;
 	size_t msgsize;
-	uint32_t receiver;
 	unsigned char mtcode;
-	int isnext;
 
 	rc = read(p->s, msg, sizeof(msg));
 	if (rc < 0) {
@@ -2032,7 +2038,17 @@ handlesocketmsg(struct peer *p)
 
 	switch (msg[0]) {
 	case MSGWGINIT:
+		/* 1. handlewginitfrompeer */
 		stats.initin++;
+
+		if (now - p->sessnext.lastvrfyinit < REKEY_TIMEOUT) {
+			logwarnx("%s is flooding us with wginit messages, "
+			    "previous wginit only %dms ago", p->name,
+			    now - p->sessnext.lastvrfyinit);
+			stats.sockinerr++;
+			stats.initinerr++;
+			return -1;
+		}
 
 		mwi = (struct msgwginit *)msg;
 		if (!ws_validmac(mwi->mac1, sizeof(mwi->mac1), mwi,
@@ -2044,69 +2060,51 @@ handlesocketmsg(struct peer *p)
 			return -1;
 		}
 
+		/*
+		 * XXX prepend current timestamp, to be used later on receiving
+		 * the session keys if the packet turns out to be valid.
+		 */
 		if (wire_sendpeeridmsg(eport, p->id, MSGWGINIT, mwi,
 		    sizeof(*mwi)) == -1)
 			logexitx(1, "wire_sendpeeridmsg MSGWGINIT");
 		break;
 	case MSGWGRESP:
+		/* 2. handlewgrespfrompeer */
 		stats.respin++;
 
 		mwr = (struct msgwgresp *)msg;
-		if (!peerhassessid(p, le32toh(mwr->receiver))) {
-			logwarnx("MSGWGRESP unknown receiver %x",
+		if (p->sesstent.id == le32toh(mwr->receiver) &&
+		    (p->sesstent.state == INITSENT ||
+		     p->sesstent.state == RESPRECVD)) {
+			if (!ws_validmac(mwr->mac1, sizeof(mwr->mac1), mwr,
+			    MAC1OFFSETRESP, ifn->mac1key)) {
+				logwarnx("MSGWGRESP invalid mac1");
+				stats.sockinerr++;
+				stats.respinerr++;
+				stats.invalidmac++;
+				return -1;
+			}
+
+			if (wire_sendpeeridmsg(eport, p->id, MSGWGRESP, mwr,
+			    sizeof(*mwr)) == -1)
+				logexitx(1, "wire_sendpeeridmsg MSGWGRESP");
+
+		     p->sesstent.state = RESPRECVD;
+		     return 0;
+		}
+
+		lognoticex("wgresp from peer too late or unknown receiver %x",
 			    le32toh(mwr->receiver));
 			stats.sockinerr++;
 			stats.respinerr++;
 			return -1;
-		}
-
-		if (!ws_validmac(mwr->mac1, sizeof(mwr->mac1), mwr,
-		    MAC1OFFSETRESP, ifn->mac1key)) {
-			logwarnx("MSGWGRESP invalid mac1");
-			stats.sockinerr++;
-			stats.respinerr++;
-			stats.invalidmac++;
-			return -1;
-		}
-
-		if (wire_sendpeeridmsg(eport, p->id, MSGWGRESP, mwr,
-		    sizeof(*mwr)) == -1)
-			logexitx(1, "wire_sendpeeridmsg MSGWGRESP");
 		break;
 	case MSGWGCOOKIE:
 		logwarnx("%s cookies are unsupported", __func__);
 		break;
 	case MSGWGDATA:
-		mwdhdr = (struct msgwgdatahdr *)msg;
-
-		/*
-		 * Find session and try to authenticate and decrypt.
-		 */
-		sess = NULL;
-		receiver = le32toh(mwdhdr->receiver);
-		isnext = 0;
-		if (p->scurr && receiver == p->scurr->id) {
-			sess = p->scurr;
-		} else if (p->snext && receiver == p->snext->id) {
-			sess = p->snext;
-			isnext = 1;
-		} else if (p->sprev && receiver == p->sprev->id) {
-			sess = p->sprev;
-		} else {
-			logwarnx("data with unknown session received %x",
-			    receiver);
-			stats.sockinerr++;
-			return -1;
-		}
-		if (!sessusable(sess)) {
-			logwarnx("data for unusable session received %x",
-			    receiver);
-			stats.sockinerr++;
-			return -1;
-		}
-
-		if (decryptandfwd(msg, sizeof(msg), mwdhdr, msgsize, sess,
-		    isnext) == -1)
+		/* 4. handlewgdatafrompeer part 1/2 */
+		if (handlewgdata((struct msgwgdatahdr *)msg, msgsize, p) == -1)
 			return -1;
 
 		break;
@@ -2133,11 +2131,9 @@ handleproxymsg(void)
 	struct sockaddr_storage fsa, lsa;
 	struct msgwgdatahdr *mwdhdr;
 	struct peer *p;
-	struct session *sess;
 	size_t msgsize;
 	uint32_t ifnid;
 	unsigned char mtcode;
-	int isnext;
 
 	msgsize = sizeof(msg);
 	if (wire_recvproxymsg(pport, &ifnid, &lsa, &fsa, &mtcode, msg,
@@ -2155,26 +2151,18 @@ handleproxymsg(void)
 	switch (mtcode) {
 	case MSGWGDATA:
 		mwdhdr = (struct msgwgdatahdr *)msg;
-		if (!findpeerbysessid(le32toh(mwdhdr->receiver), &p, &sess)) {
+		if (!findpeerbysessid(le32toh(mwdhdr->receiver), &p)) {
 			logwarnx("invalid session id via proxy");
 			stats.proxinerr++;
 			return -1;
 		}
-		if (!sessusable(sess)) {
-			logwarnx("data for unusable session %x received via "
-			    "proxy", le32toh(mwdhdr->receiver));
+
+		if (handlewgdata(mwdhdr, msgsize, p) == -1) {
+			logwarnx("data for unusable session received via "
+			    "proxy");
 			stats.proxinerr++;
 			return -1;
 		}
-
-		if (p->snext && p->snext->id == sess->id)
-			isnext = 1;
-		else
-			isnext = 0;
-
-		if (decryptandfwd(msg, sizeof(msg), mwdhdr, msgsize, sess,
-		    isnext) == -1)
-			return -1;
 
 		if (peerconnect(p, &lsa, &fsa) == -1) {
 			stats.sockouterr++;
@@ -2206,66 +2194,61 @@ utime(const struct timespec *tp)
 }
 
 /*
- * Handle rekey- and keep alive timeout.
+ * Handle rekey- and keepalive session timeout.
  */
 static void
 sesshandletimer(struct kevent *ev)
 {
 	struct session *sess;
 	struct peer *peer;
-	size_t n;
-	int istent;
 
 	if (verbose > 1)
 		loginfox("handling timer event id %lu", ev->ident);
 
-	/* XXX log(n) */
-	istent = 0;
-	sess = NULL;
-	for (n = 0; n < ifn->peerssize; n++) {
-		peer = ifn->peers[n];
-		if (peer->scurr && ev->ident == peer->scurr->id) {
-			sess = peer->scurr;
-		} else if (peer->stent && ev->ident == peer->stent->id) {
-			sess = peer->stent;
-			istent = 1;
-		} else if (peer->sprev && ev->ident == peer->sprev->id) {
-			sess = peer->sprev;
+	if (!findpeerbysessid(ev->ident, &peer)) {
+		logwarnx("timer with unknown session id went off %lu",
+		    ev->ident);
+		return;
+	}
+
+	if (peer->sesstent.id >= 0 &&
+	    ev->ident == (uint32_t)peer->sesstent.id) {
+		lognoticex("Rekey-Timeout %x %s", peer->sesstent.id,
+		    peer->name);
+
+		/*
+		 * Request a new handshake init message from the enclave as long
+		 * as within Rekey-Attempt-Time.
+		 */
+		if (now - peer->sesstent.lastreq <= REKEY_ATTEMPT_TIME) {
+			sendreqhsinit(peer);
+		} else {
+			sesstentclear(peer, 0);
 		}
 
-		if (sess)
-			break;
-	}
-
-	if (!sess) {
-		if (verbose > -1)
-			logwarnx("unknown timer went off %lu", ev->ident);
-		return;
-	}
-	if (!sessusable(sess)) {
-		if (verbose > -1)
-			logwarnx("timer of unusable session went off %lu",
-			    ev->ident);
 		return;
 	}
 
-	if (istent) {
-		if (verbose > 0)
-			lognoticex("Rekey-Timeout %x %s", sess->id,
-			    sess->peer->name);
+	/*
+	 * Must be a keepalive on either the current or the previous session.
+	 */
 
-		handlerekeytimeout(sess->peer);
+	if (peer->scurr && ev->ident == peer->scurr->id) {
+		sess = peer->scurr;
+	} else if (peer->sprev && ev->ident == peer->sprev->id) {
+		sess = peer->sprev;
 	} else {
-		if (verbose > 0)
-			lognoticex("Keepalive-Timeout %x %s", sess->id,
-			    sess->peer->name);
-
-		assert(sess->kaset);
-		sess->kaset = 0;
-
-		if (encryptandsend(msg, sizeof(msg), NULL, 0, sess) == -1)
-			logexit(1, "%s encryptandsend", __func__);
+		logwarnx("timer with unknown session id went off %lu",
+		    ev->ident);
+		return;
 	}
+
+	lognoticex("Keepalive-Timeout %x %s", sess->id, sess->peer->name);
+
+	sess->kaset = 0;
+
+	if (encryptandsend(msg, sizeof(msg), NULL, 0, sess) == -1)
+		logwarn("%s encryptandsend error", __func__);
 }
 
 /*
@@ -2539,22 +2522,8 @@ peernew(uint32_t id, const char *name)
 
 	loginfox("peer udp4 receive buffer: %d", len);
 
-	/*
-	 * Pre-allocate tentative and next sessions so that unauthenticated
-	 * session negotiation does not allocate any new data. As soon as a new
-	 * session is authenticated and moved to curr, new memory is allocated
-	 * to randomize it's position on the heap.
-	 */
-
-	if ((peer->stent = malloc(sizeof(struct session))) == NULL)
-		logexit(1, "%s malloc", __func__);
-
-	if ((peer->snext = malloc(sizeof(struct session))) == NULL)
-		logexit(1, "%s malloc", __func__);
-
-	sessinit(peer->stent, peer, 1);
-	sessinit(peer->snext, peer, 0);
-
+	sesstentclear(peer, 0);
+	sessnextclear(peer, 0);
 	peer->scurr = peer->sprev = NULL;
 
 	return peer;

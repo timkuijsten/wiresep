@@ -1,0 +1,35 @@
+digraph G {
+	rankdir=LR
+
+	node [shape = doublecircle]
+		SESSEST
+
+	node [shape = point ]
+		qi
+
+	node [shape = circle]
+
+		INITREQ   [ label = "1. INITREQ" ]
+		INITSENT  [ label = "2. INITSENT" ]
+		RESPRECVD [ label = "3. RESPRECVD" ]
+		SESSEST   [ label = "new current\nsession" ]
+
+		qi        -> NOTENT
+		NOTENT    -> INITREQ   [ label = "read(2) from tun" ]
+		INITREQ   -> INITSENT  [ label = "WGINIT from enclave" ]
+		INITSENT  -> RESPRECVD [ label = "WGRESP from peer" ]
+		RESPRECVD -> SESSEST   [ label = "SESSKEYS from enclave" ]
+
+		INITREQ   -> INITREQ   [ label = "Rekey-Timeout" ]
+		INITREQ   -> NOTENT    [ label = "Rekey-Attempt-Time" ]
+		INITSENT  -> INITREQ   [ label = "Rekey-Timeout" ]
+		INITSENT  -> NOTENT    [ label = "Rekey-Attempt-Time" ]
+		RESPRECVD -> INITREQ   [ label = "Rekey-Timeout" ]
+		RESPRECVD -> NOTENT    [ label = "Rekey-Attempt-Time" ]
+
+		SESSEST   -> NOTENT
+
+        labelloc = t
+	labeljust = l
+	label = "Initiator session establishment\nVersion 0.1\l2019-10-03\l"
+}
