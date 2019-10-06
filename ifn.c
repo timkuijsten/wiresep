@@ -1057,18 +1057,15 @@ static void
 sessnextclear(struct peer *peer, int keysset)
 {
 	if (keysset) {
-		EVP_AEAD_CTX_cleanup(&peer->sessnext.recvctx);
 		EVP_AEAD_CTX_cleanup(&peer->sessnext.sendctx);
+		EVP_AEAD_CTX_cleanup(&peer->sessnext.recvctx);
 	}
 
-	if (notifyproxy(peer->id, peer->sessnext.id, SESSIDDESTROY)
-	    == -1)
-		if (verbose > -1)
-			logwarnx("could not notify proxy of erased next"
-			    "session");
-
-	explicit_bzero(&peer->sessnext, sizeof(peer->sessnext));
+	peer->sessnext.state = INACTIVE;
 	peer->sessnext.id = -1;
+	peer->sessnext.peerid = -1;
+	peer->sessnext.lastvrfyinit = 0;
+	peer->sessnext.start = 0;
 }
 
 /*
@@ -1443,6 +1440,12 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 			    "late", peer->name);
 
 		sessnextclear(peer, 1);
+
+		if (notifyproxy(peer->id, peer->sessnext.id, SESSIDDESTROY)
+		    == -1)
+			logwarnx("proxy notification of erased next session "
+			    "failed");
+
 		stats.sockinerr++;
 		return -1;
 	}
