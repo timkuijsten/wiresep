@@ -910,7 +910,7 @@ cleartimer(unsigned int id)
 		return -1;
 
 	if (verbose > 1)
-		loginfox("timer %u cleared", id);
+		loginfox("timer %x cleared", id);
 
 	return 0;
 }
@@ -1638,7 +1638,7 @@ handleenclavemsg(void)
 				logwarnx("could not notify proxy of tent "
 				    "session id");
 		} else {
-			lognoticex("WGINIT from enclave not needed, %d %lld %d",
+			lognoticex("WGINIT from enclave not needed, %d %llx %x",
 			    p->sesstent.state, p->sesstent.id,
 			    le32toh(mwi->sender));
 		}
@@ -1662,7 +1662,7 @@ handleenclavemsg(void)
 			if (verbose > -1)
 				logwarnx("wgresp message from enclave does not "
 				    "match last received authenticated "
-				    "response: %zu to %zu", p->sessnext.peerid,
+				    "response: %llx to %x", p->sessnext.peerid,
 				    le32toh(mwr->receiver));
 
 			stats.sockouterr++;
@@ -2225,10 +2225,10 @@ sesshandletimer(struct kevent *ev)
 	struct peer *peer;
 
 	if (verbose > 1)
-		loginfox("handling timer event id %lu", ev->ident);
+		loginfox("handling timer event id %lx", ev->ident);
 
 	if (!findpeerbysessid(ev->ident, &peer)) {
-		logwarnx("timer with unknown session id went off %lu",
+		logwarnx("timer with unknown session id went off %lx",
 		    ev->ident);
 		return;
 	}
@@ -2260,7 +2260,7 @@ sesshandletimer(struct kevent *ev)
 	} else if (peer->sprev && ev->ident == peer->sprev->id) {
 		sess = peer->sprev;
 	} else {
-		logwarnx("timer with unknown session id went off %lu",
+		logwarnx("timer with unknown session id went off %lx",
 		    ev->ident);
 		return;
 	}
@@ -2413,7 +2413,7 @@ ifn_serv(void)
 						loginfox("socket event");
 					handlesocketmsg(peer);
 				} else {
-					logwarnx("event undetermined %lu",
+					logwarnx("event undetermined %lx",
 					    ev[i].ident);
 				}
 			}

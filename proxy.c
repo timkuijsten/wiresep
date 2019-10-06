@@ -244,7 +244,7 @@ sessmapvreplace(const struct ifn *ifn, struct peer *peer, int64_t oid,
 	ifn->sessmapv[sessidx]->peer = peer;
 
 	if (nid == oid) {
-		loginfox("old sessid equals new sessid %u", oid);
+		loginfox("old sessid equals new sessid %x", oid);
 	} else if (nid > oid) {
 		loginfox("replaced %x@%d with %x, resort from index %d (%d)",
 		    oid, sessidx, nid, sessidx, ifn->sessmapvsize - sessidx);
@@ -296,7 +296,7 @@ handleifnmsg(const struct sockmap *sockmap)
 		msi = (struct msgsessid *)msg;
 
 		if (verbose > 1)
-			loginfox("received %u %u from %s", msi->type,
+			loginfox("received %u %x from %s", msi->type,
 			    msi->sessid, ifn->ifname);
 
 		switch (msi->type) {
@@ -311,26 +311,26 @@ handleifnmsg(const struct sockmap *sockmap)
 				sessid = &peer->sessprev;
 			} else {
 				logwarnx("%s: could not destroy session for "
-				    "peer %u, session id not found: %u",
+				    "peer %u, session id not found: %x",
 				    ifn->ifname, peer->id, msi->sessid);
 				break;
 			}
 			if (sessmapvreplace(ifn, peer, msi->sessid, -1) == -1)
-				logwarn("could not remove session id: %u",
+				logwarn("could not remove session id: %x",
 				    msi->sessid);
 			*sessid = -1;
 			break;
 		case SESSIDTENT:
 			if (sessmapvreplace(ifn, peer, peer->sesstent,
 			    msi->sessid) == -1)
-				logwarn("could not find tent session id: %llu",
+				logwarn("could not find tent session id: %llx",
 				    peer->sesstent);
 			peer->sesstent = msi->sessid;
 			break;
 		case SESSIDNEXT:
 			if (sessmapvreplace(ifn, peer, peer->sessnext,
 			    msi->sessid) == -1)
-				logwarn("could not find next session id: %llu",
+				logwarn("could not find next session id: %llx",
 				    peer->sessnext);
 			peer->sessnext = msi->sessid;
 			break;
@@ -341,7 +341,7 @@ handleifnmsg(const struct sockmap *sockmap)
 				sessid = &peer->sessnext;
 			} else {
 				logwarnx("%s: current session for peer %u was "
-				    "not tentative or next: %u", ifn->ifname,
+				    "not tentative or next: %x", ifn->ifname,
 				    peer->id, msi->sessid);
 				break;
 			}
@@ -362,7 +362,7 @@ handleifnmsg(const struct sockmap *sockmap)
 				if (sessmapvreplace(ifn, peer, peer->sessprev,
 				    -1) == -1)
 					logwarn("could not find prev session "
-					    "id: %llu", peer->sessprev);
+					    "id: %llx", peer->sessprev);
 
 			if (peer->sesscurr != -1)
 				peer->sessprev = peer->sesscurr;
@@ -471,7 +471,7 @@ handlesockmsg(const struct sockmap *sockmap)
 		mwr = (struct msgwgresp *)msg;
 		if (!findpeerbysessidandifn(&peer, ifn,
 		    le32toh(mwr->receiver))) {
-			loginfox("MSGWGRESP unknown receiver %u for %s",
+			loginfox("MSGWGRESP unknown receiver %x for %s",
 			    le32toh(mwr->receiver), ifn->ifname);
 			invalidpeer++;
 			return -1;
@@ -499,7 +499,7 @@ handlesockmsg(const struct sockmap *sockmap)
 		mwdhdr = (struct msgwgdatahdr *)msg;
 		if (!findpeerbysessidandifn(&peer, ifn,
 		    le32toh(mwdhdr->receiver))) {
-			loginfox("MSGWGDATA unknown receiver %u for %s",
+			loginfox("MSGWGDATA unknown receiver %x for %s",
 			    le32toh(mwdhdr->receiver), ifn->ifname);
 			invalidpeer++;
 			return -1;
