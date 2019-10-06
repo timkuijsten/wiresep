@@ -484,6 +484,8 @@ findpeerbysessid(uint32_t sessid, struct peer **peer)
  * authentication tag.
  *
  * Return 0 on success, -1 on failure.
+ *
+ * XXX might merge into decryptpacket()
  */
 static int
 payloadoffset(uint8_t **payload, size_t *payloadsize,
@@ -559,12 +561,14 @@ maskip6(struct in6_addr *out, const struct in6_addr *in, size_t prefixlen,
  * mask or prefix length, the last one is choosen.
  *
  * Return 1 if a peer with a matching route is found and updates "peer" to point
- * to it. Returns 0 if no peer is found and updates "peer" to NULL.
+ * to it as well as "addr" to the addr that matched. Returns 0 if no peer is
+ * found and updates "peer" and "addr" to NULL.
  *
  * XXX log(n)
  */
 static int
-peerbyroute6(struct peer **peer, const struct in6_addr *fa)
+peerbyroute6(struct peer **peer, struct cidraddr **addr,
+    const struct in6_addr *fa)
 {
 	struct cidraddr *allowedip;
 	struct in6_addr famasked;
@@ -575,6 +579,7 @@ peerbyroute6(struct peer **peer, const struct in6_addr *fa)
 
 	maxprefixlen = 0;
 	*peer = NULL;
+	*addr = NULL;
 
 	for (n = 0; n < ifn->peerssize; n++) {
 		p = ifn->peers[n];
@@ -591,6 +596,7 @@ peerbyroute6(struct peer **peer, const struct in6_addr *fa)
 			if (memcmp(&famasked, &allowedip->v6addrmasked, 16) == 0
 			    && allowedip->prefixlen >= maxprefixlen) {
 				*peer = p;
+				*addr = allowedip;
 				maxprefixlen = allowedip->prefixlen;
 			}
 		}
@@ -608,12 +614,14 @@ peerbyroute6(struct peer **peer, const struct in6_addr *fa)
  * mask or prefix length, the last one is choosen.
  *
  * Return 1 if a peer with a matching route is found and updates "peer" to point
- * to it. Returns 0 if no peer is found and updates "peer" to NULL.
+ * to it as well as "addr" to the addr that matched. Returns 0 if no peer is
+ * found and updates "peer" and "addr" to NULL.
  *
  * XXX log(n)
  */
 static int
-peerbyroute4(struct peer **peer, const struct in_addr *fa)
+peerbyroute4(struct peer **peer, struct cidraddr **addr,
+    const struct in_addr *fa)
 {
 	struct cidraddr *allowedip;
 	struct in_addr *fa4;
@@ -624,6 +632,7 @@ peerbyroute4(struct peer **peer, const struct in_addr *fa)
 
 	maxprefixlen = 0;
 	*peer = NULL;
+	*addr = NULL;
 
 	for (n = 0; n < ifn->peerssize; n++) {
 		p = ifn->peers[n];
@@ -639,6 +648,7 @@ peerbyroute4(struct peer **peer, const struct in_addr *fa)
 			    allowedip->v4addrmasked &&
 			    allowedip->prefixlen >= maxprefixlen) {
 				*peer = p;
+				*addr = allowedip;
 				maxprefixlen = allowedip->prefixlen;
 			}
 		}
@@ -1287,29 +1297,19 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 }
 
 /*
- * Decrypt a packet and send it to the tunnel device.
+ * Decrypt a WGDATA message into "out".
  *
  * Returns the payload size of the packet on success, -1 otherwise.
  */
 static ssize_t
-decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
-    size_t mwdsize, const struct peer *peer, EVP_AEAD_CTX *key,
-    uint32_t peersessid)
+decryptpacket(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
+    size_t mwdsize, EVP_AEAD_CTX *key, uint32_t peersessid)
 {
 	uint8_t *payload;
 	size_t payloadsize;
-	struct peer *routedpeer;
-	struct ip *ip4;
-	struct ip6_hdr *ip6hdr;
 
-	if (outsize < TUNHDRSIZ + MAXIPHDR) {
-		stats.corrupted++;
+	if (outsize < mwdsize)
 		return -1;
-	}
-	if (outsize < mwdsize) {
-		stats.corrupted++;
-		return -1;
-	}
 
 	if (payloadoffset(&payload, &payloadsize, mwdhdr, mwdsize) == -1) {
 		stats.corrupted++;
@@ -1317,9 +1317,8 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	}
 
 	/* prepend a tunnel header */
-	outsize -= TUNHDRSIZ;
 	*(uint64_t *)&nonce[4] = mwdhdr->counter;
-	if (EVP_AEAD_CTX_open(key, &out[TUNHDRSIZ], &outsize, outsize, nonce,
+	if (EVP_AEAD_CTX_open(key, out, &outsize, outsize, nonce,
 	    sizeof(nonce), payload, payloadsize, NULL, 0) == 0) {
 		logwarnx("unauthenticated data received, UDP data: %zu, WG "
 		    "data: %zu, peer session id: counter: %llu", mwdsize,
@@ -1328,94 +1327,102 @@ decryptandfwd(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 		return -1;
 	}
 
-	payloadsize = outsize;
-	payload = &out[TUNHDRSIZ];
-	outsize += TUNHDRSIZ;
+	return outsize;
+}
 
-	/*
-	 * Write authenticated and decrypted packet to the tunnel device if it's
-	 * an ip4 or ip6 packet. Otherwise treat it as a keepalive.
-	 */
-	if (payloadsize >= MINIPHDR) {
-		/* ip version is in the first four bits of the packet */
-		switch(payload[0] >> 4) {
-		case 6:
-			if (payloadsize < MINIP6HDR) {
-				if (verbose > -1)
-					logwarnx("invalid ip6 packet");
-				stats.corrupted++;
-				return -1;
-			}
-			ip6hdr = (struct ip6_hdr *)payload;
-			if (!peerbyroute6(&routedpeer, &ip6hdr->ip6_src)) {
-				if (verbose > -1) {
-					addrtostr((char *)msg, sizeof(msg),
-					    (struct sockaddr *)&ip6hdr->ip6_src,
-					    1);
-					logwarnx("valid packet from %s with "
-					    "an invalid source ip received: %s",
-					    peer->name, msg);
-				}
-				stats.invalidpeer++;
-				return -1;
-			}
-			if (routedpeer->id != peer->id) {
-				if (verbose > -1)
-					logwarnx("valid packet from %s with a "
-					    "source address of %s received",
-					    peer->name, routedpeer->name);
-				stats.invalidpeer++;
-				return -1;
-			}
+/*
+ * Find a peer based on the source of an ip4 or ip6 packet.
+ *
+ * Return 1 if a peer with a matching route is found and updates "peer" to point
+ * to it as well as "addr" to the addr that matched. Returns 0 if no peer is
+ * found. Return -1 on error.
+ */
+static int
+ipsrc2peer(struct peer **peer, struct cidraddr **addr, const uint8_t *packet,
+    size_t packetsize)
+{
+	struct ip6_hdr *ip6hdr;
+	struct ip *ip4hdr;
 
-			*(uint32_t *)out = htonl(AF_INET6);
-			break;
-		case 4:
-			if (payloadsize < MINIP4HDR) {
-				logwarnx("invalid ip4 packet");
-				stats.corrupted++;
-				return -1;
-			}
-			ip4 = (struct ip *)payload;
-			if (!peerbyroute4(&routedpeer, &ip4->ip_src)) {
-				if (verbose > -1)
-					logwarnx("valid packet from %s with an "
-					    "invalid source ip received: %s",
-					    peer->name,
-					    inet_ntoa(ip4->ip_src));
-				stats.invalidpeer++;
-				return -1;
-			}
-			if (routedpeer->id != peer->id) {
-				if (verbose > -1)
-					logwarnx("valid packet from %s with a"
-					    " source address of %s received",
-					    peer->name, routedpeer->name);
-				stats.invalidpeer++;
-				return -1;
-			}
-
-			*(uint32_t *)out = htonl(AF_INET);
-			break;
-		default:
-			if (verbose > -1)
-				logwarnx("invalid ip version received %u",
-				    payload[0] >> 4);
-			stats.corrupted++;
+	/* ip version is in the first four bits of the packet */
+	switch(packet[0] >> 4) {
+	case 6:
+		if (packetsize < MINIP6HDR)
 			return -1;
-		}
 
-		if (writen(tund, out, outsize) != 0) {
-			logwarn("writen tund");
-			stats.devouterr++;
+		ip6hdr = (struct ip6_hdr *)packet;
+		return peerbyroute6(peer, addr, &ip6hdr->ip6_src);
+	case 4:
+		if (packetsize < MINIP4HDR)
 			return -1;
-		}
 
-		stats.devout++;
-		stats.devoutsz += outsize;
+		ip4hdr = (struct ip *)packet;
+		return peerbyroute4(peer, addr, &ip4hdr->ip_src);
 	}
 
-	return payloadsize;
+	return 0;
+}
+
+/*
+ * Send "frame" to the tunnel device. It is expected that "frame" consists of
+ * TUNHDRSIZ bytes that can be used for the tunnel header, followed by the
+ * actual ip packet.
+ *
+ * Returns 0 on success, -1 otherwise.
+ */
+static int
+forward2tun(uint8_t *frame, size_t framesize, const struct peer *peer)
+{
+	struct peer *routedpeer;
+	struct cidraddr *addr;
+	uint8_t *ippacket;
+	size_t ippacketsize;
+	int rc;
+
+	if (framesize < TUNHDRSIZ + MINIPHDR) {
+		stats.corrupted++;
+		return -1;
+	}
+
+	ippacket = &frame[TUNHDRSIZ];
+	ippacketsize = framesize - TUNHDRSIZ;
+	rc = ipsrc2peer(&routedpeer, &addr, ippacket, ippacketsize);
+
+	if (rc == -1) {
+		logwarnx("decrypted packet from %s contains invalid ip packet",
+		    peer->name);
+
+		stats.corrupted++;
+		return -1;
+	}
+
+	if (rc == 0) {
+		logwarnx("ip packet from %s could not be routed", peer->name);
+
+		stats.invalidpeer++;
+		return -1;
+	}
+
+	if (routedpeer->id != peer->id) {
+		logwarnx("ip packet from %s with a source address of %s "
+		    "received", peer->name, routedpeer->name);
+
+		stats.invalidpeer++;
+		return -1;
+	}
+
+	*(uint32_t *)frame = htonl(addr->addr.ss_family);
+
+	if (writen(tund, frame, framesize) != 0) {
+		logwarn("writen tund");
+		stats.devouterr++;
+		return -1;
+	}
+
+	stats.devout++;
+	stats.devoutsz += ippacketsize;
+
+	return 0;
 }
 
 /*
@@ -1436,18 +1443,28 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 			    "late", peer->name);
 
 		sessnextclear(peer, 1);
-		return 0;
+		stats.sockinerr++;
+		return -1;
 	}
 
-	payloadsize = decryptandfwd(out, outsize, mwdhdr, mwdsize, peer,
-	    &peer->sessnext.recvctx, peer->sessnext.peerid);
+	/* leave room in "out" for the tunnel header */
+	payloadsize = decryptpacket(&out[TUNHDRSIZ], outsize - TUNHDRSIZ,
+	    mwdhdr, mwdsize, &peer->sessnext.recvctx, peer->sessnext.peerid);
 
 	if (payloadsize < 0)
 		return -1;
 
-	if (payloadsize < MINIPHDR)
+	/*
+	 * Write authenticated and decrypted packet to the tunnel device if it's
+	 * an ip4 or ip6 packet. Otherwise treat it as a keepalive.
+	 */
+	if (payloadsize >= MINIPHDR) {
+		if (forward2tun(out, TUNHDRSIZ + payloadsize, peer) == -1)
+			return -1;
+	} else {
 		loginfox("%s unexpected keep-alive at start of next sesssion",
 		    __func__);
+	}
 
 	/* 4. handlewgdatafrompeer part 2/2 */
 	if (makenextcurr(peer) == -1) {
@@ -1497,8 +1514,9 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 		return -1;
 	}
 
-	payloadsize = decryptandfwd(out, outsize, mwdhdr, mwdsize, sess->peer,
-	    &sess->recvctx, sess->peerid);
+	/* leave room in "out" for the tunnel header */
+	payloadsize = decryptpacket(&out[TUNHDRSIZ], outsize - TUNHDRSIZ,
+	    mwdhdr, mwdsize, &sess->recvctx, sess->peerid);
 
 	if (payloadsize < 0)
 		return -1;
@@ -1515,6 +1533,9 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	 * an ip4 or ip6 packet. Otherwise treat it as a keepalive.
 	 */
 	if (payloadsize >= MINIPHDR) {
+		if (forward2tun(out, TUNHDRSIZ + payloadsize, sess->peer) == -1)
+			return -1;
+
 		/*
 		 * Schedule a keepalive timeout if this was not already the case
 		 * and only if we're not near the end of the session.
@@ -1805,6 +1826,7 @@ handleenclavemsg(void)
 static int
 handletundmsg(void)
 {
+	struct cidraddr *addr;
 	struct qpacket *qp;
 	struct peer *p;
 	struct ip6_hdr *ip6hdr;
@@ -1839,7 +1861,7 @@ handletundmsg(void)
 		if (msgsize < TUNHDRSIZ + MINIP6HDR)
 			logwarnx("invalid ipv6 packet");
 		ip6hdr = (struct ip6_hdr *)&msg[TUNHDRSIZ];
-		if (!peerbyroute6(&p, &ip6hdr->ip6_dst)) {
+		if (!peerbyroute6(&p, &addr, &ip6hdr->ip6_dst)) {
 			addrtostr((char *)msg, sizeof(msg),
 			    (struct sockaddr *)&ip6hdr->ip6_dst, 1);
 
@@ -1854,7 +1876,7 @@ handletundmsg(void)
 		if (msgsize < TUNHDRSIZ + MINIP4HDR)
 			logwarnx("invalid ipv4 packet");
 		ip4 = (struct ip *)&msg[TUNHDRSIZ];
-		if (!peerbyroute4(&p, &ip4->ip_dst)) {
+		if (!peerbyroute4(&p, &addr, &ip4->ip_dst)) {
 			if (verbose > 0)
 				lognoticex("no route to %s",
 				    inet_ntoa(ip4->ip_dst));
@@ -2550,7 +2572,7 @@ recvconfig(int masterport)
 		struct scidraddr cidraddr;
 		struct seos eos;
 	} smsg;
-	struct cidraddr *ifaddr, *allowedip;
+	struct cidraddr *ifaddr, *allowedip, *addr;
 	struct sockaddr_in *sin;
 	struct sockaddr_in6 *sin6;
 	struct sockaddr_storage *listenaddr;
@@ -2768,8 +2790,9 @@ recvconfig(int masterport)
 		for (n = 0; n < peer->allowedipssize; n++) {
 			allowedip = peer->allowedips[n];
 			if (allowedip->addr.ss_family == AF_INET6) {
-				if (peerbyroute6(&peer2, &allowedip->v6addrmasked)
-				    && peer != peer2) {
+				if (peerbyroute6(&peer2, &addr,
+				    &allowedip->v6addrmasked) &&
+				    peer != peer2) {
 					addrtostr(addrstr, sizeof(addrstr),
 					    (struct sockaddr *)&allowedip->v6addrmasked,
 					    1);
