@@ -928,10 +928,10 @@ notifyproxy(uint32_t peerid, uint32_t sessid, enum sessidtype type)
 	msi.sessid = sessid;
 	msi.type = type;
 
-	if (wire_sendpeeridmsg(pport, peerid, MSGSESSID, &msi, sizeof(msi)) ==
-	    -1) {
-	    stats.proxouterr++;
-	    return -1;
+	if (wire_sendpeeridmsg(pport, peerid, MSGSESSID, &msi, sizeof(msi))
+	    == -1) {
+		stats.proxouterr++;
+		return -1;
 	}
 
 	stats.proxout++;
@@ -970,9 +970,7 @@ sessdestroy(struct session *sess)
 	sesscounter--;
 
 	if (notifyproxy(peerid, sessid, SESSIDDESTROY) == -1)
-		if (verbose > -1)
-			logwarnx("could not notify proxy of destroyed session "
-			    "id");
+		logwarnx("proxy notification of destroyed session id failed");
 }
 
 /*
@@ -1127,10 +1125,6 @@ maketentcurr(struct peer *peer, const struct msgsesskeys *msk)
 
 	sesstentclear(peer, 1);
 
-	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
-		if (verbose > -1)
-			logwarnx("%s: could not notify proxy", __func__);
-
 	return 0;
 }
 
@@ -1165,10 +1159,6 @@ makenextcurr(struct peer *peer)
 	explicit_bzero(&peer->sessnext, sizeof(peer->sessnext));
 	peer->sessnext.id = -1;
 	peer->sessnext.peerid = -1;
-
-	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
-		if (verbose > -1)
-			logwarnx("%s: could not notify proxy", __func__);
 
 	return 0;
 }
@@ -1439,12 +1429,12 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 			logwarnx("first packet for next session arrived too "
 			    "late", peer->name);
 
-		sessnextclear(peer, 1);
-
 		if (notifyproxy(peer->id, peer->sessnext.id, SESSIDDESTROY)
 		    == -1)
-			logwarnx("proxy notification of erased next session "
-			    "failed");
+			logwarnx("proxy notification that the next session is "
+			    "dead failed");
+
+		sessnextclear(peer, 1);
 
 		stats.sockinerr++;
 		return -1;
@@ -1478,6 +1468,10 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 		stats.invalidpeer++;
 		return -1;
 	}
+
+	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
+		logwarnx("proxy notification that the next session is now the "
+		    "current session failed");
 
 	if (verbose > 1)
 		loginfox("%s: %x %zu bytes", peer->name, peer->scurr->id,
@@ -1638,8 +1632,8 @@ handleenclavemsg(void)
 
 			if (notifyproxy(p->id, p->sesstent.id, SESSIDTENT)
 			    == -1)
-				logwarnx("could not notify proxy of tent "
-				    "session id");
+				logwarnx("proxy notification of a new tentative"
+				    " session failed");
 		} else {
 			lognoticex("WGINIT from enclave not needed, %d %llx %x",
 			    p->sesstent.state, p->sesstent.id,
@@ -1675,11 +1669,6 @@ handleenclavemsg(void)
 
 		p->sessnext.start = now;
 		p->sessnext.state = RESPSENT;
-
-		if (notifyproxy(p->id, p->sessnext.id, SESSIDNEXT) == -1)
-			if (verbose > -1)
-				logwarnx("could not notify proxy of next "
-				    "session id");
 
 		rc = write(p->s, msg, msgsize);
 		if (rc < 0) {
@@ -1725,6 +1714,11 @@ handleenclavemsg(void)
 				stats.sockouterr++;
 				return -1;
 			}
+
+			if (notifyproxy(p->id, p->scurr->id, SESSIDCURR) == -1)
+				logwarnx("proxy notification that the tentative"
+				    "session is now the current session "
+				    "failed");
 
 			if (verbose > 1)
 				loginfox("new initiator session %x with %s %x",
@@ -1786,6 +1780,11 @@ handleenclavemsg(void)
 				stats.enclinerr++;
 				return -1;
 			}
+
+			if (notifyproxy(p->id, p->sessnext.id, SESSIDNEXT)
+			    == -1)
+				logwarnx("proxy notification of next session "
+				    "id failed");
 
 			/*
 			 * Only transmit data using this session as soon as the
@@ -2240,6 +2239,16 @@ sesshandletimer(struct kevent *ev)
 	    ev->ident == (uint32_t)peer->sesstent.id) {
 		lognoticex("Rekey-Timeout %x %s", peer->sesstent.id,
 		    peer->name);
+
+		/*
+		 * This timeout can also happen if the enclave is unresponsive,
+		 * in that case the tentative id was not communicated to the
+		 * proxy and only used as a rekey timeout timer.
+		 */
+		if (notifyproxy(peer->id, peer->sesstent.id, SESSIDDESTROY)
+		    == -1)
+			logwarnx("proxy notification of destroyed tentative"
+			    "session id failed");
 
 		/*
 		 * Request a new handshake init message from the enclave as long
