@@ -898,7 +898,6 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 static int
 handleifnmsg(const struct ifn *ifn)
 {
-	struct msgwginit *mwi;
 	struct peer *peer;
 	size_t msgsize;
 	uint32_t peerid;
@@ -927,14 +926,13 @@ handleifnmsg(const struct ifn *ifn)
 			return -1;
 		break;
 	case MSGREQWGINIT:
-		mwi = (struct msgwginit *)msg;
-		if (createhsinit(peer, mwi) == -1) {
+		if (createhsinit(peer, (struct msgwginit *)msg) == -1) {
 			logwarnx("createhsinit");
 			return -1;
 		}
 
-		if (wire_sendpeeridmsg(ifn->port, peerid, MSGWGINIT, mwi,
-		    sizeof(*mwi)) == -1) {
+		if (wire_sendpeeridmsg(ifn->port, peerid, MSGWGINIT, msg,
+		    sizeof(struct msgwginit)) == -1) {
 			logwarnx("wire_sendpeeridmsg MSGWGINIT");
 			return -1;
 		}
