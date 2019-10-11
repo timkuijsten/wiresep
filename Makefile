@@ -101,11 +101,10 @@ testifn: tai64n.o blake2s-ref.o wireprot.o wiresep.o util.o scfg.o base64.o \
 	${CC} ${CFLAGS} -g -pg tai64n.o blake2s-ref.o wiresep.o wireprot.o \
 	    util.o base64.o scfg.o parseconfig.o test/testifn.c -o $@ -lcrypto
 
-# run make CFLAGS="-pg -DPROFIL" testproxy
 testproxy: tai64n.o blake2s-ref.o wireprot.o wiresep.o util.o scfg.o base64.o \
     parseconfig.o proxy.c test/testproxy.c
-	${CC} ${CFLAGS} tai64n.o blake2s-ref.o wiresep.o wireprot.o util.o \
-	    base64.o scfg.o parseconfig.o test/testproxy.c -o $@ -lcrypto
+	${CC} ${CFLAGS} -g -pg tai64n.o blake2s-ref.o wiresep.o wireprot.o \
+	    util.o base64.o scfg.o parseconfig.o test/testproxy.c -o $@ -lcrypto
 
 clean:
 	rm -f y.tab.c *.o *.core *.html wiresep wiresep-keygen testproxy
