@@ -1,4 +1,16 @@
-2019-08-08, Version 0.6.0 
+2019-10-13, Version 0.7.0
+
+* completely reimplement session management to improve reliability and
+  conformance to the specification
+* only malloc after a new session is authenticated and established
+* support queueing of multiple packets
+* log interface statistics on receiving a USR1 signal
+* be silent on startup
+* lot's of refinements
+* raise status from alpha to beta
+
+
+2019-08-08, Version 0.6.0
 
 * lot's of small refinements and some code restructuring
 * interface public key is no longer needed or allowed, only the private key
@@ -9,6 +21,6 @@
 * improvements to wiresep-keygen(1)
 
 
-2019-05-05, Version 0.5.0 
+2019-05-05, Version 0.5.0
 
 * first public release
