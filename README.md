@@ -2,8 +2,6 @@
 
 ## A privilege separated implementation of WireGuard for OpenBSD
 
-Status: **alpha**
-
 Features:
 * Privilege separation, long-term secrets in a separate process
 * Short-term secrets separated per tunnel interface
@@ -13,16 +11,7 @@ Features:
   machines (small attack surface)
 * Uses connected sockets for performance and reliability
 
-TODO:
-* Improve most searches from linear to logarithmic
-* Improve performance of session start and throughput
-* Better support multi-homed systems (currently have to manually change
-  the routing table if another source address was chosen by the kernel)
-* WireGuard Cookie support
-* Support hostname.if(5): Resolve NAT issues when using hostname.if(5) to bring
-  up the tunnel interface
-* Investigate weird issue where packets for an older ip are received on a
-  reconnected socket (kernel related)
+Status: **beta**
 
 ## Requirements
 
@@ -136,6 +125,12 @@ keeping dependencies to a minimum. Existing config file formats like TOML, YAML,
 INI, JSON, JSON5 and Human JSON are not optimal, either in writing the actual
 config files or in writing a parser that supports the syntax while keeping
 dependencies small and not overly complex.
+
+## Todo
+
+* Better support multi-homed systems (currently have to manually change
+  the routing table if another source address was chosen by the kernel)
+* WireGuard Cookie support
 
 ## License
 
