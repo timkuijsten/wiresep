@@ -12,7 +12,7 @@ SBINDIR	= $(PREFIX)/sbin
 MANDIR	= $(PREFIX)/man
 
 VERSION_MAJOR	= 0
-VERSION_MINOR	= 7
+VERSION_MINOR	= 8
 VERSION_PATCH	= 0
 
 SRCFILES = base64.c enclave.c master.c proxy.c test.c wireprot.c wiresep.c \
