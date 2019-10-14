@@ -32,6 +32,8 @@
 #include "wiresep.h"
 
 #define MAXPEERS 10000
+#define MAXDATA  (1 << 21) /* cap malloc(3) and mmap(2) to 2 MB */
+#define MAXSTACK (1 << 15) /* 32 KB should be enough */
 
 void proxy_loginfo(void);
 
@@ -553,7 +555,7 @@ proxy_serv(void)
 
 	evsize = sockmapvsize;
 	if ((ev = calloc(evsize, sizeof(*ev))) == NULL)
-		logexit(1, "reallocarray");
+		logexit(1, "calloc");
 
 	for (n = 0; n < sockmapvsize; n++)
 		EV_SET(&ev[n], sockmapv[n]->s, EVFILT_READ, EV_ADD, 0, 0, NULL);
@@ -869,6 +871,20 @@ proxy_init(int masterport)
 
 	if (verbose > 1)
 		loginfox("server sockets created: ");
+
+	if (ensurelimit(RLIMIT_DATA, MAXDATA) == -1)
+		logexit(1, "ensurelimit data");
+	if (ensurelimit(RLIMIT_FSIZE, 0) == -1)
+		logexit(1, "ensurelimit fsize");
+	if (ensurelimit(RLIMIT_MEMLOCK, 0) == -1)
+		logexit(1, "ensurelimit memlock");
+	/* kqueue will be opened later */
+	if (ensurelimit(RLIMIT_NOFILE, getdtablecount() + 1) == -1)
+		logexit(1, "ensurelimit nofile");
+	if (ensurelimit(RLIMIT_NPROC, 0) == -1)
+		logexit(1, "ensurelimit nproc");
+	if (ensurelimit(RLIMIT_STACK, MAXSTACK) == -1)
+		logexit(1, "ensurelimit stack");
 
 	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
 	sa.sa_handler = handlesig;

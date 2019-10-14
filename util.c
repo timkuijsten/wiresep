@@ -15,6 +15,7 @@
  */
 
 #include <sys/types.h>
+#include <sys/resource.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 
@@ -198,6 +199,76 @@ hexdump(FILE *fp, const uint8_t *data, size_t datalen, size_t maxwidth)
 			fprintf(fp, "\n");
 		}
 	}
+}
+
+/*
+ * If the current or maximum limit of "resource" exceed "limit", set both to
+ * "limit".
+ *
+ * Return 0 on success, or -1 on failure with errno set.
+ */
+int
+ensurelimit(int resource, size_t limit)
+{
+	struct rlimit rl;
+	const char *infostr;
+
+	switch (resource) {
+	case RLIMIT_CORE:
+		infostr = "core";
+		break;
+	case RLIMIT_CPU:
+		infostr = "cpu";
+		break;
+	case RLIMIT_DATA:
+		infostr = "data";
+		break;
+	case RLIMIT_FSIZE:
+		infostr = "fsize";
+		break;
+	case RLIMIT_MEMLOCK:
+		infostr = "memlock";
+		break;
+	case RLIMIT_NOFILE:
+		infostr = "nofile";
+		break;
+	case RLIMIT_NPROC:
+		infostr = "nproc";
+		break;
+	case RLIMIT_RSS:
+		infostr = "rss";
+		break;
+	case RLIMIT_STACK:
+		infostr = "stack";
+		break;
+	default:
+		infostr = "";
+	}
+
+	if (getrlimit(resource, &rl) == -1)
+		return -1;
+
+	if (rl.rlim_cur > limit) {
+		loginfox("decreasing current %s limit from %llu to %lu",
+		    infostr, rl.rlim_cur, limit);
+
+		rl.rlim_cur = limit;
+
+		if (setrlimit(resource, &rl) == -1)
+			return -1;
+	}
+
+	if (rl.rlim_max > limit) {
+		loginfox("decreasing maximum %s limit from %llu to %lu",
+		    infostr, rl.rlim_max, limit);
+
+		rl.rlim_max = limit;
+
+		if (setrlimit(resource, &rl) == -1)
+			return -1;
+	}
+
+	return 0;
 }
 
 /*

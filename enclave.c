@@ -37,6 +37,8 @@
 #include "wiresep.h"
 
 #define TAGLEN 16
+#define MAXDATA  (1 << 20) /* cap malloc(3) and mmap(2) to 1 MB */
+#define MAXSTACK (1 << 15) /* 32 KB should be enough */
 
 void enclave_printinfo(FILE *);
 
@@ -1254,6 +1256,20 @@ enclave_init(int masterport)
 
 	if ((size_t)getdtablecount() != stdopen + 2 + ifnvsize)
 		logexitx(1, "descriptor mismatch: %d", getdtablecount());
+
+	if (ensurelimit(RLIMIT_DATA, MAXDATA) == -1)
+		logexit(1, "ensurelimit data");
+	if (ensurelimit(RLIMIT_FSIZE, 0) == -1)
+		logexit(1, "ensurelimit fsize");
+	if (ensurelimit(RLIMIT_MEMLOCK, 0) == -1)
+		logexit(1, "ensurelimit memlock");
+	/* kqueue will be opened later */
+	if (ensurelimit(RLIMIT_NOFILE, getdtablecount() + 1) == -1)
+		logexit(1, "ensurelimit nofile");
+	if (ensurelimit(RLIMIT_NPROC, 0) == -1)
+		logexit(1, "ensurelimit nproc");
+	if (ensurelimit(RLIMIT_STACK, MAXSTACK) == -1)
+		logexit(1, "ensurelimit stack");
 
 	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
 	sa.sa_handler = handlesig;
