@@ -111,6 +111,7 @@ clean:
 
 tags: *.[ch]
 	find . -name '*.[chy]' | xargs ctags -d
+	cd test && find . -name '*.[chy]' | xargs ctags -d
 
 wiresep-keygen.1.html:  wiresep-keygen.1
 	mandoc -T html -O style=man.css wiresep-keygen.1 > wiresep-keygen.1.html
