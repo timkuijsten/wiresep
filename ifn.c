@@ -2221,7 +2221,7 @@ utime(const struct timespec *tp)
  * Handle rekey- and keepalive session timeout.
  */
 static void
-sesshandletimer(struct kevent *ev)
+sesshandletimeout(struct kevent *ev)
 {
 	struct session *sess;
 	struct peer *peer;
@@ -2391,7 +2391,7 @@ ifn_serv(void)
 					loginfox("timer event");
 
 				/* session timer */
-				sesshandletimer(&ev[i]);
+				sesshandletimeout(&ev[i]);
 			} else if ((int)ev[i].ident == eport) {
 				if (verbose > 1)
 					loginfox("enclave event");
