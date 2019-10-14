@@ -111,13 +111,13 @@ struct session {
 	struct peer *peer;
 	utime_t start;	/* whenever handshake completes (or first hs while still
 			 * tentative) */
-	utime_t expack; /* time before either data or a keep alive is expected
+	utime_t expack; /* time before either data or a keepalive is expected
 			 * from the peer */
 	uint64_t nextnonce; /* next number for the next packet to send */
 	uint32_t id;
 	uint32_t peerid;
 	char initiator;
-	char kaset;	/* is the keep-alive timer set? */
+	char kaset;	/* is the keepalive timer set? */
 };
 
 struct cidraddr {
@@ -235,7 +235,7 @@ logsessinfo(const char *pre, const struct session *sess)
 	    sess->nextnonce,
 	    sess->start,
 	    sess->expack,
-	    sess->kaset ? "keep-alive" : "");
+	    sess->kaset ? "keepalive" : "");
 }
 
 static void
@@ -498,7 +498,7 @@ payloadoffset(uint8_t **payload, size_t *payloadsize,
 
 	/*
 	 * At the very least expect an empty packet which contains only an
-	 * authentication tag (keep-alive).
+	 * authentication tag (keepalive).
 	 */
 	if (mwdsize - DATAHEADERLEN < TAGLEN)
 		return -1;
@@ -895,7 +895,7 @@ settimer(unsigned int id, utime_t usec)
 }
 
 /*
- * Clear a rekey or keep-alive timer.
+ * Clear a rekey or keepalive timer.
  *
  * Return 0 on success, -1 on error with errno set.
  */
@@ -1014,7 +1014,7 @@ ensurehs(struct peer *peer)
 /*
  * Determine if a current or previous session can be used for sending or
  * receiving data. There are time based and message based limits, as well as
- * an expected keep-alive from our peer within the next 15 seconds after we've
+ * an expected keepalive from our peer within the next 15 seconds after we've
  * sent data.
  *
  * Return 1 if the session is still active, 0 if not.
@@ -1221,7 +1221,7 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 	size_t padlen;
 
 	if (insize == 0) {
-		/* keep-alive */
+		/* keepalive */
 		padlen = 0;
 	} else {
 		padlen = ((insize + 15) / 16) * 16;
@@ -1455,7 +1455,7 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 		if (forward2tun(out, TUNHDRSIZ + payloadsize, peer) == -1)
 			return -1;
 	} else {
-		loginfox("%s unexpected keep-alive at start of next sesssion",
+		loginfox("%s unexpected keepalive at start of next sesssion",
 		    __func__);
 	}
 
