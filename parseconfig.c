@@ -1305,9 +1305,6 @@ sendconfig_enclave(union smsg smsg, int mast2encl, int enclwithprox)
 			smsg.peer.ifnid = n;
 			smsg.peer.peerid = m;
 
-			if (memcmp(peer->psk, nullkey, sizeof(wskey)) == 0)
-				memcpy(peer->psk, ifn->psk, sizeof(wskey));
-
 			memcpy(smsg.peer.psk, peer->psk, sizeof(smsg.peer.psk));
 			memcpy(smsg.peer.peerkey, peer->pubkey,
 			    sizeof(smsg.peer.peerkey));
