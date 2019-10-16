@@ -446,7 +446,7 @@ parseinterfaceconfigs(void)
 					warnx("%s: %s may not have a block "
 					    "associated", ifn->ifname, key);
 					e = 1;
-					/* check other keywords */
+					/* check other keywords first */
 				}
 			}
 
@@ -578,26 +578,10 @@ parseinterfaceconfigs(void)
 					}
 				}
 			} else if (strcasecmp("peer", key) == 0) {
-				if (subcfg->strvsize > 2) {
-					warnx("%s: %s extra peer information "
-					    "must be grouped in a block \"peer "
-					    "%s %s\"", ifn->ifname,
-					    key, subcfg->strv[1],
-					    subcfg->strv[2]);
-					e = 1;
-					continue;
-				}
-				xaddone((void ***)&ifn->peers, &ifn->peerssize,
-				    (void **)&peer, sizeof(*peer));
-				if (parsepeerconfig(peer, subcfg,
-				    ifn->peerssize) == -1) {
-					e = 1;
-					continue;
-				}
-				if (memcmp(peer->psk, nullkey, sizeof(wskey))
-				    == 0)
-					memcpy(peer->psk, ifnv[n]->psk,
-					    sizeof(wskey));
+				/*
+				 * Skip for now, first process all interface
+				 * keywords.
+				 */
 			} else {
 				warnx("%s: %s invalid keyword in interface "
 				    "scope", ifn->ifname, key);
@@ -606,7 +590,7 @@ parseinterfaceconfigs(void)
 		}
 
 		/*
-		 * ensure defaults
+		 * ensure global defaults are propagated to the interface
 		 */
 
 		if (memcmp(ifn->psk, nullkey, sizeof(wskey)) == 0)
@@ -647,6 +631,33 @@ parseinterfaceconfigs(void)
 		if (memcmp(ifn->pubkey, nullkey, sizeof(wskey)) == 0) {
 			warnx("%s: pubkey missing", ifn->ifname);
 			e = 1;
+		}
+
+		/*
+		 * Now that the whole interface is processed, process all peers.
+		 */
+		for (i = 0; i < ifn->scfge->entryvsize; i++) {
+			subcfg = ifn->scfge->entryv[i];
+
+			if (subcfg->strvsize < 1 ||
+			    strcasecmp("peer", subcfg->strv[0]) != 0)
+				continue;
+
+			if (subcfg->strvsize > 2) {
+				warnx("%s: %s extra peer information must be "
+				    "grouped in a block \"peer %s %s\"",
+				    ifn->ifname, "peer", subcfg->strv[1],
+				    subcfg->strv[2]);
+				e = 1;
+				continue;
+			}
+			xaddone((void ***)&ifn->peers, &ifn->peerssize,
+			    (void **)&peer, sizeof(*peer));
+			if (parsepeerconfig(peer, subcfg,
+			    ifn->peerssize) == -1) {
+				e = 1;
+				continue;
+			}
 		}
 
 		if (ifn->peerssize == 0)
@@ -724,7 +735,7 @@ parseglobalconfig(const struct scfge *root)
 				warnx("global %s may not have a block "
 				    "associated", key);
 				e = 1;
-				/* check other keywords */
+				/* check other keywords first */
 			}
 		}
 
