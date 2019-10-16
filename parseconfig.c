@@ -355,6 +355,9 @@ parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber)
 /*
  * Parse all interface configs. "ifnv" must be pre-allocated.
  *
+ * In a first pass determine all interface settings and in a second pass
+ * parse all peer specific settings.
+ *
  * Return 0 on success, -1 on error.
  */
 static int
@@ -612,7 +615,7 @@ parseinterfaceconfigs(void)
 		}
 
 		/*
-		 * check requirements
+		 * Check requirements.
 		 */
 
 		if (ifn->ifname == NULL) {
@@ -636,6 +639,7 @@ parseinterfaceconfigs(void)
 		/*
 		 * Now that the whole interface is processed, process all peers.
 		 */
+
 		for (i = 0; i < ifn->scfge->entryvsize; i++) {
 			subcfg = ifn->scfge->entryv[i];
 
@@ -703,12 +707,15 @@ parseinterfaceconfigs(void)
 }
 
 /*
- * Parse global settings and allocate new ifn structures in "ifnv".
+ * Parse the complete comfig and allocate new ifn structures in "ifnv".
+ *
+ * In a first pass determine all global settings and in a second pass
+ * create interfaces with peer specific settings.
  *
  * Return 0 on success, -1 on error.
  */
 static int
-parseglobalconfig(const struct scfge *root)
+parseconfig(const struct scfge *root)
 {
 	struct scfge *subcfg;
 	struct cfgifn *ifn;
@@ -843,6 +850,10 @@ parseglobalconfig(const struct scfge *root)
 		}
 	}
 
+	/*
+	 * Check requirements.
+	 */
+
 	if (guid == 0) {
 		warnx("global user id may not be 0");
 		e = 1;
@@ -851,6 +862,9 @@ parseglobalconfig(const struct scfge *root)
 		warnx("global group id may not be 0");
 		e = 1;
 	}
+
+	if (parseinterfaceconfigs() == -1)
+		e = 1;
 
 	if (e != 0)
 		return -1;
@@ -865,9 +879,6 @@ parseglobalconfig(const struct scfge *root)
  *
  * yyparse creates a tree of scfg entries.
  *
- * In a first pass determine all global settings and in a second pass
- * create interfaces with peer specific settings.
- *
  * Exit on error.
  */
 void
@@ -875,19 +886,11 @@ xparseconfigfd(int fd, struct cfgifn ***rifnv, size_t *rifnvsize,
     uid_t *unprivuid, gid_t *unprivgid, char **rlogfacilitystr)
 {
 	yyd = fd;
-	int e;
 
 	if (yyparse() != 0)
 		errx(1, "%s: yyparse", __func__);
 
-	e = 0;
-	if (parseglobalconfig(scfg) == -1)
-		e = 1;
-
-	if (parseinterfaceconfigs() == -1)
-		e = 1;
-
-	if (e)
+	if (parseconfig(scfg) == -1)
 		exit(1);
 
 	scfg_clear();
