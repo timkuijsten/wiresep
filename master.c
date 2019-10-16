@@ -314,7 +314,8 @@ main(int argc, char **argv)
 		errx(1, "must run as the superuser");
 
 	/*
-	 *   0. read configuration
+	 *   0. read configuration and re-exec later to expunge secrets like
+	 *      private keys from memory.
 	 */
 
 	if (configfile) {

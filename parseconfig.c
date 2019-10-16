@@ -18,7 +18,9 @@
 #include <sys/stat.h>
 
 #include <assert.h>
+#include <ctype.h>
 #include <err.h>
+#include <errno.h>
 #include <fcntl.h>
 #include <netdb.h>
 #include <openssl/curve25519.h>
@@ -32,6 +34,8 @@
 #include "wiresep.h"
 
 #include "parseconfig.h"
+
+#define B64KEYLEN 44
 
 /* global settings */
 static char *guser, *ggroup;
@@ -153,6 +157,99 @@ err:
 	free(s);
 	s = NULL;
 	return -1;
+}
+
+/*
+ * Parse "path" for a base64 key and place it in "key".
+ *
+ * Empty lines or lines starting with a hash '#' are ignored. Also any text
+ * after a key is ignored.
+ *
+ * Returns 1 if a key is set, 0 if no key is found and -1 on error with errno
+ * set.
+ */
+static int
+parsekeyfile(wskey key, const char *path)
+{
+	char *line;
+	size_t len, lineno, s;
+	int rc;
+	FILE *fp;
+
+	s = 0;
+	rc = 0;
+	lineno = 0;
+	line = NULL;
+
+	if ((fp = fopen(path, "re")) == NULL) {
+		/* errno set */
+		warn("%s", path);
+		return -1;
+	}
+
+	if (!isfdsafe(fileno(fp), 0600)) {
+		errno = EPERM;
+		warn("%s: must be owned by the superuser and may not be "
+		    "readable or writable by the group or others", path);
+		rc = -1;
+		goto cleanup;
+	}
+
+	while (getline(&line, &s, fp) > 0) {
+		lineno++;
+
+		len = strcspn(line, "\n");
+		if (len == 0)
+			continue;
+
+		if (line[0] == '#')
+			continue;
+
+		line[len] = '\0';
+
+		if (len < B64KEYLEN) {
+			warnx("%s error on line %zu: illegal key", path,
+			    lineno);
+			errno = EINVAL;
+			rc = -1;
+			goto cleanup;
+		}
+
+		if (len > B64KEYLEN && !isblank(line[B64KEYLEN])) {
+			warnx("%s error on line %zu: keys and comments must be "
+			    "separated by a space or tab", path, lineno);
+			errno = EINVAL;
+			rc = -1;
+			goto cleanup;
+		}
+
+		/* ignore everything following the key */
+		line[B64KEYLEN] = '\0';
+
+		if (base64_pton(line, key, KEYLEN) == -1) {
+			errno = EINVAL;
+			rc = -1;
+			goto cleanup;
+		}
+
+		rc = 1;
+		goto cleanup;
+	}
+
+cleanup:
+
+	free(line);
+	if (ferror(fp)) {
+		warn("error reading %s", path);
+		rc = -1;
+	}
+
+	if (fclose(fp) == EOF) {
+		warn("error closing %s", path);
+		rc = -1;
+	}
+
+	return rc;
 }
 
 /*
@@ -905,7 +1002,9 @@ xparseconfigfd(int fd, struct cfgifn ***rifnv, size_t *rifnvsize,
 }
 
 /*
- * Create a list of interfaces plus some global settings.
+ * Create a list of interfaces plus some global settings. Note that secrets like
+ * private keys remain in memory after parsing the configuration so a re-exec(3)
+ * is required for safe operation.
  *
  * Exit on error.
  */
