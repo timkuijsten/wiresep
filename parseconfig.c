@@ -38,7 +38,7 @@
 #define B64KEYLEN 44
 
 /* global settings */
-static char *guser, *ggroup;
+static char *guser, *ggroup, *gpskfile;
 static wskey gpsk;
 static uid_t guid;
 static gid_t ggid;
@@ -279,13 +279,14 @@ parsekey(wskey dst, const char *src, size_t srcsize)
  * Return 0 on success, -1 on error.
  */
 static int
-parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber)
+parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber,
+    wskey defaultpsk)
 {
 	struct cfgcidraddr *allowedip;
 	struct scfge *subcfg;
 	const char *key, *peerid;
 	size_t i, j;
-	int e;
+	int e, rc;
 
 	if (cfg == NULL || cfg->strvsize < 1)
 		return -1;
@@ -426,10 +427,39 @@ parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber)
 				e = 1;
 				continue;
 			}
+		} else if (strcasecmp("pskfile", key) == 0) {
+			if (subcfg->strvsize != 2) {
+				warnx("%s: %s path missing", peerid, key);
+				e = 1;
+				continue;
+			}
+			if ((peer->pskfile = strdup(subcfg->strv[1])) == NULL)
+				err(1, "strdup peer pskfile");
 		} else {
 			warnx("%s: %s invalid keyword in peer scope", peerid,
 			    key);
 			e = 1;
+		}
+	}
+
+	/*
+	 * Ensure defaults.
+	 */
+
+	if (memcmp(peer->psk, nullkey, sizeof(wskey)) == 0) {
+		if (peer->pskfile != NULL) {
+			rc = parsekeyfile(peer->psk, peer->pskfile);
+			if (rc == -1) {
+				warnx("%s: could not parse peer pskfile: %s",
+				    peerid, peer->pskfile);
+				e = 1;
+			} else if (rc == 0) {
+				warnx("%s: could not find a key in peer pskfile"
+				    ": %s", peerid, peer->pskfile);
+				e = 1;
+			}
+		} else {
+			memcpy(peer->psk, defaultpsk, sizeof(wskey));
 		}
 	}
 
@@ -471,7 +501,7 @@ parseinterfaceconfigs(void)
 	const char *key;
 	char tundevpath[29];
 	size_t i, j, n;
-	int e, wildcard, lport, tunnum;
+	int e, rc, wildcard, lport, tunnum;
 
 	e = 0;
 	for (n = 0; n < ifnvsize; n++) {
@@ -618,6 +648,16 @@ parseinterfaceconfigs(void)
 					e = 1;
 					continue;
 				}
+			} else if (strcasecmp("pskfile", key) == 0) {
+				if (subcfg->strvsize != 2) {
+					warnx("%s: %s path missing",
+					    ifn->ifname, key);
+					e = 1;
+					continue;
+				}
+				if ((ifn->pskfile = strdup(subcfg->strv[1]))
+				    == NULL)
+					err(1, "strdup ifn pskfile");
 			} else if (strcasecmp("privkey", key) == 0) {
 				if (subcfg->strvsize != 2) {
 					warnx("%s: %s must have a value",
@@ -633,15 +673,16 @@ parseinterfaceconfigs(void)
 					e = 1;
 					continue;
 				}
-				if (X25519(ifn->pubkey, ifn->privkey, basepoint)
-				    == 0) {
-					warnx("%s: %s could determine the "
-					    "interface public key from this "
-					    "private key", ifn->ifname,
-					    key);
+			} else if (strcasecmp("privkeyfile", key) == 0) {
+				if (subcfg->strvsize != 2) {
+					warnx("%s: %s path missing",
+					    ifn->ifname, key);
 					e = 1;
 					continue;
 				}
+				if ((ifn->privkeyfile = strdup(subcfg->strv[1]))
+				    == NULL)
+					err(1, "strdup ifn privkeyfile");
 			} else if (strcasecmp("desc", key) == 0) {
 				if (subcfg->strvsize != 2) {
 					warnx("%s: %s must have a value",
@@ -690,26 +731,45 @@ parseinterfaceconfigs(void)
 		}
 
 		/*
-		 * ensure global defaults are propagated to the interface
+		 * Ensure defaults.
 		 */
 
-		if (memcmp(ifn->psk, nullkey, sizeof(wskey)) == 0)
-			memcpy(ifn->psk, gpsk, sizeof(wskey));
+		if (memcmp(ifn->psk, nullkey, sizeof(wskey)) == 0) {
+			if (ifn->pskfile != NULL) {
+				rc = parsekeyfile(ifn->psk, ifn->pskfile);
+				if (rc == -1) {
+					warnx("%s: could not parse interface "
+					    "pskfile", ifn->pskfile);
+					e = 1;
+				} else if (rc == 0) {
+					warnx("%s: could not find a key in "
+					    "interface pskfile", ifn->pskfile);
+					e = 1;
+				}
+			} else {
+				memcpy(ifn->psk, gpsk, sizeof(wskey));
+			}
+		}
+
+		if (memcmp(ifn->privkey, nullkey, sizeof(wskey)) == 0 &&
+		    ifn->privkeyfile != NULL) {
+			rc = parsekeyfile(ifn->privkey, ifn->privkeyfile);
+			if (rc == -1) {
+				warnx("%s: could not parse interface "
+				    "privkeyfile", ifn->privkeyfile);
+				e = 1;
+			} else if (rc == 0) {
+				warnx("%s: could not find a key in "
+				    "interface privkeyfile", ifn->privkeyfile);
+				e = 1;
+			}
+		}
 
 		if (ifn->uid == 0)
 			ifn->uid = guid;
 
 		if (ifn->gid == 0)
 			ifn->gid = ggid;
-
-		/* default interface description to the public key */
-		if (ifn->ifdesc == NULL) {
-			if ((ifn->ifdesc = calloc(1, MAXIFNDESC)) == NULL)
-				err(1, "calloc ifdesc");
-			if (base64_ntop(ifn->pubkey, KEYLEN, ifn->ifdesc,
-			    MAXIFNDESC) == -1)
-				return -1;
-		}
 
 		/*
 		 * Check requirements.
@@ -727,10 +787,26 @@ parseinterfaceconfigs(void)
 		if (memcmp(ifn->privkey, nullkey, sizeof(wskey)) == 0) {
 			warnx("%s: privkey missing", ifn->ifname);
 			e = 1;
+		} else {
+			/* calculate public key */
+			if (X25519(ifn->pubkey, ifn->privkey, basepoint) == 0) {
+				warnx("%s: could determine the interface public"
+				    " key", ifn->ifname);
+				e = 1;
+			}
 		}
-		if (memcmp(ifn->pubkey, nullkey, sizeof(wskey)) == 0) {
-			warnx("%s: pubkey missing", ifn->ifname);
-			e = 1;
+
+		/* default interface description to the public key */
+		if (memcmp(ifn->pubkey, nullkey, sizeof(wskey)) != 0) {
+			if (ifn->ifdesc == NULL) {
+				if ((ifn->ifdesc = calloc(1, MAXIFNDESC))
+				    == NULL)
+					err(1, "calloc ifdesc");
+
+				if (base64_ntop(ifn->pubkey, KEYLEN,
+				    ifn->ifdesc, MAXIFNDESC) == -1)
+					return -1;
+			}
 		}
 
 		/*
@@ -752,10 +828,12 @@ parseinterfaceconfigs(void)
 				e = 1;
 				continue;
 			}
+
 			xaddone((void ***)&ifn->peers, &ifn->peerssize,
 			    (void **)&peer, sizeof(*peer));
-			if (parsepeerconfig(peer, subcfg,
-			    ifn->peerssize) == -1) {
+
+			if (parsepeerconfig(peer, subcfg, ifn->peerssize,
+			    ifn->psk) == -1) {
 				e = 1;
 				continue;
 			}
@@ -818,7 +896,7 @@ parseconfig(const struct scfge *root)
 	struct cfgifn *ifn;
 	const char *key;
 	size_t n;
-	int e;
+	int e, rc;
 
 	e = 0;
 	for (n = 0; n < root->entryvsize; n++) {
@@ -937,6 +1015,14 @@ parseconfig(const struct scfge *root)
 				e = 1;
 				continue;
 			}
+		} else if (strcasecmp("pskfile", key) == 0) {
+			if (subcfg->strvsize != 2) {
+				warnx("%s: %s path missing", "global", key);
+				e = 1;
+				continue;
+			}
+			if ((gpskfile = strdup(subcfg->strv[1])) == NULL)
+				err(1, "strdup global pskfile");
 		} else if (strcasecmp("interface", key) == 0) {
 			xaddone((void ***)&ifnv, &ifnvsize, (void **)&ifn,
 			    sizeof(*ifn));
@@ -944,6 +1030,25 @@ parseconfig(const struct scfge *root)
 		} else {
 			warnx("invalid keyword in the global scope: %s", key);
 			e = 1;
+		}
+	}
+
+	/*
+	 * Ensure defaults.
+	 */
+
+	if (memcmp(gpsk, nullkey, sizeof(wskey)) == 0) {
+		if (gpskfile != NULL) {
+			rc = parsekeyfile(gpsk, gpskfile);
+			if (rc == -1) {
+				warnx("%s: could not parse global pskfile",
+				    gpskfile);
+				e = 1;
+			} else if (rc == 0) {
+				warnx("%s: could not find a key in global "
+				    "pskfile", gpskfile);
+				e = 1;
+			}
 		}
 	}
 

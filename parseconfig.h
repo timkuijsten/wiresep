@@ -36,6 +36,7 @@ struct cfgcidraddr {
 };
 
 struct cfgpeer {
+	char *pskfile;
 	wskey psk;
 	wskey pubkey;
 	wskey mac1key;
@@ -70,6 +71,8 @@ struct cfgifn {
 	size_t ifaddrssize;
 	struct sockaddr_storage **listenaddrs;
 	size_t listenaddrssize;
+	char *pskfile;
+	char *privkeyfile;
 	wskey psk;
 	wskey privkey;
 	wskey pubkey;
