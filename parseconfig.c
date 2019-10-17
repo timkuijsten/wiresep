@@ -274,6 +274,82 @@ parsekey(wskey dst, const char *src, size_t srcsize)
 }
 
 /*
+ * Try to load a private or pre-shared key from a default path.
+ *
+ * If both "ifname" and "peername" are not NULL an interface bound peer specific
+ * per-shared key is tried.
+ * If "ifname" and "peername" are both NULL the default path for a global pre-
+ * shared key is tried.
+ * If "ifname" is NULL and "peername" is not NULL a peer specific pre-shared key
+ * is tried.
+ * If "peername" is NULL and "ifname" is not NULL an interface key path is
+ * tried. In this case "ext" indicates whether to try a private key or a pre-
+ * shared key by being either "key" or "psk", respectively.
+ *
+ * Returns 1 if a key was found and parsed into "out".
+ * Returns 0 if the default path existed and had no syntax errors, but alsno no
+ * key.
+ * Returns -1 if an error occurred while opening the default path, errno will be
+ * set to any error that open(2) can set.
+ * Returns -2 if parsekeyfile() returned an error, in this case errno will *not*
+ * be set.
+ * Returns -3 if "ext" is not one of NULL, "psk" or "key".
+ *
+ * Exits on asprintf(3) error.
+ */
+static int
+xtrydefaultkey(wskey out, const char *ifname, const char *peername,
+    const char *ext)
+{
+	char *defaultkeypath;
+	int d, rc;
+
+	if (ifname && peername) {
+		if (asprintf(&defaultkeypath, "/etc/wiresep/%s.%s.psk", ifname,
+		    peername) < 0)
+			errx(1, "could not allocate default interface bound "
+			    "peer specific key path");
+	} else if (ifname) {
+		if (ext == NULL)
+			return -3;
+
+		if (strcmp(ext, "psk") != 0 && strcmp(ext, "key") != 0)
+			return -3;
+
+		if (asprintf(&defaultkeypath, "/etc/wiresep/%s.%s", ifname, ext)
+		    < 0)
+			errx(1, "could not allocate default interface specific "
+			    "key path");
+	} else if (peername) {
+		if (asprintf(&defaultkeypath, "/etc/wiresep/%s.psk", peername)
+		    < 0)
+			errx(1, "could not allocate default peer specific key "
+			    "path");
+	} else {
+		if (asprintf(&defaultkeypath, "/etc/wiresep/global.psk") < 0)
+			errx(1, "could not allocate default peer specific key "
+			    "path");
+	}
+
+	d = open(defaultkeypath, O_RDONLY);
+
+	if (d == -1) {
+		/* errno set */
+		free(defaultkeypath);
+		return -1;
+	} else {
+		close(d);
+		rc = parsekeyfile(out, defaultkeypath);
+		free(defaultkeypath);
+
+		if (rc == -1)
+			return -2;
+
+		return rc;
+	}
+}
+
+/*
  * Get the number of the name of a tunnel interface.
  *
  * Returns the number of the tunnel interface on success, or -1 on failure.
@@ -345,18 +421,20 @@ validpeername(const char *name)
  */
 static int
 parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber,
-    wskey defaultpsk)
+    const struct cfgifn *ifn)
 {
 	struct cfgcidraddr *allowedip;
 	struct scfge *subcfg;
 	const char *key, *peerid;
 	size_t i, j;
-	int e, rc;
+	int e, rc, explicitpeername;
 
 	if (cfg == NULL || cfg->strvsize < 1)
 		return -1;
 	if (strcasecmp("peer", cfg->strv[0]) != 0)
 		return -1;
+
+	explicitpeername = 0;
 
 	/*
 	 * Use optional peer name or a default until the public key is
@@ -365,6 +443,7 @@ parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber,
 	if (cfg->strvsize >= 2) {
 		if (validpeername(cfg->strv[1])) {
 			strlcpy(peer->name, cfg->strv[1], sizeof(peer->name));
+			explicitpeername = 1;
 		} else {
 			warnx("%s: invalid peer name. Peer name may not be the "
 			    "word \"global\", be an interface name, contain a "
@@ -530,10 +609,65 @@ parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber,
 				    ": %s", peerid, peer->pskfile);
 				e = 1;
 			}
-		} else {
-			memcpy(peer->psk, defaultpsk, sizeof(wskey));
+		} else if (explicitpeername) {
+			/*
+			 * Look for an interface bound peer specific pre-shared
+			 * key.
+			 */
+			rc = xtrydefaultkey(peer->psk, ifn->ifname, peer->name,
+			    NULL);
+
+			if (rc == 1) {
+				/* key loaded! */
+			} else if ((rc == -1 && errno == ENOENT) || rc == 0) {
+				/*
+				 * No key found, try a global peer specific key.
+				 */
+				rc = xtrydefaultkey(peer->psk, NULL, peer->name,
+				    NULL);
+
+				if (rc == 1) {
+					/* key loaded! */
+				} else if (rc == 0) {
+					/* no key found, be silent */
+				} else if (rc == -1 && errno == ENOENT) {
+					/* no key found, be silent */
+				} else if (rc == -1) {
+					warn("could not load default peer "
+					    "specific pre-shared key file: %s",
+					    peer->name);
+					e = 1;
+				} else if (rc == -2) {
+					warnx("could not parse default peer "
+					    "specific pre-shared key file: %s",
+					    peer->name);
+					e = 1;
+				} else if (rc == -3) {
+					warnx("xtrydefaultkey peer pre-shared "
+					    "key file error %s", peer->name);
+					e = 1;
+				}
+			} else if (rc == -1 && errno != ENOENT) {
+				warn("could not load default interface bound "
+				    "peer specific pre-shared key file: %s %s",
+				    ifn->ifname, peer->name);
+				e = 1;
+			} else if (rc == -2) {
+				warnx("could not parse default interface bound"
+				    " peer specific pre-shared key file: %s %s",
+				    ifn->ifname, peer->name);
+				e = 1;
+			} else if (rc == -3) {
+				warnx("%s: xtrydefaultkey peer pre-shared key "
+				    "file error %s", ifn->ifname, peer->name);
+				e = 1;
+			}
 		}
 	}
+
+	/* if still no pre-shared key, try to use the default one */
+	if (memcmp(peer->psk, nullkey, sizeof(wskey)) == 0)
+		memcpy(peer->psk, ifn->psk, sizeof(wskey));
 
 	if (peer->allowedipssize == 0) {
 		warnx("%s: allowedips missing", peerid);
@@ -818,22 +952,84 @@ parseinterfaceconfigs(void)
 					    "interface pskfile", ifn->pskfile);
 					e = 1;
 				}
-			} else {
-				memcpy(ifn->psk, gpsk, sizeof(wskey));
+			} else if (ifn->ifname) {
+				/*
+				 * Look for an interface pre-shared key.
+				 */
+				rc = xtrydefaultkey(ifn->psk, ifn->ifname,
+				    NULL, "psk");
+
+				if (rc == 1) {
+					/* key loaded! */
+				} else if (rc == 0) {
+					/* no key found, be silent */
+				} else if (rc == -1 && errno == ENOENT) {
+					/* no key found, be silent */
+				} else if (rc == -1) {
+					warn("%s: could not load default "
+					    "interface pre-shared key file",
+					    ifn->ifname);
+					e = 1;
+				} else if (rc == -2) {
+					warnx("%s: could not parse default "
+					    "interface pre-shared key file",
+					    ifn->ifname);
+					e = 1;
+				} else if (rc == -3) {
+					warnx("%s: xtrydefaultkey pre-shared "
+					    "key file error", ifn->ifname);
+					e = 1;
+				}
 			}
 		}
 
-		if (memcmp(ifn->privkey, nullkey, sizeof(wskey)) == 0 &&
-		    ifn->privkeyfile != NULL) {
-			rc = parsekeyfile(ifn->privkey, ifn->privkeyfile);
-			if (rc == -1) {
-				warnx("%s: could not parse interface "
-				    "privkeyfile", ifn->privkeyfile);
-				e = 1;
-			} else if (rc == 0) {
-				warnx("%s: could not find a key in "
-				    "interface privkeyfile", ifn->privkeyfile);
-				e = 1;
+		/* if still no pre-shared key, try to use a global one */
+		if (memcmp(ifn->psk, nullkey, sizeof(wskey)) == 0)
+			memcpy(ifn->psk, gpsk, sizeof(wskey));
+
+		if (memcmp(ifn->privkey, nullkey, sizeof(wskey)) == 0) {
+			if (ifn->privkeyfile != NULL) {
+				rc = parsekeyfile(ifn->privkey, ifn->privkeyfile);
+				if (rc == -1) {
+					warnx("%s: could not parse interface "
+					    "privkeyfile", ifn->privkeyfile);
+					e = 1;
+				} else if (rc == 0) {
+					warnx("%s: could not find a key in "
+					    "interface privkeyfile", ifn->privkeyfile);
+					e = 1;
+				}
+			} else if (ifn->ifname) {
+				/*
+				 * Look for an interface private key.
+				 */
+				rc = xtrydefaultkey(ifn->privkey, ifn->ifname,
+				    NULL, "key");
+
+				if (rc == 1) {
+					/* key loaded! */
+				} else if (rc == 0) {
+					/* no key found, be silent */
+				} else if (rc == -1 && errno == ENOENT) {
+					warnx("%s: privkeyfile not set and "
+					    "default private key file does not "
+					    "exist", ifn->ifname);
+					e = 1;
+				} else if (rc == -1) {
+					warn("%s: could not load default "
+					    "interface private key file",
+					    ifn->ifname);
+					e = 1;
+				} else if (rc == -2) {
+					warnx("%s: could not parse default "
+					    "interface private key file",
+					    ifn->ifname);
+					e = 1;
+				} else if (rc == -3) {
+					warnx("%s: xtrydefaultkey private "
+					    "key file error", ifn->ifname);
+					e = 1;
+				}
 			}
 		}
 
@@ -904,8 +1100,8 @@ parseinterfaceconfigs(void)
 			xaddone((void ***)&ifn->peers, &ifn->peerssize,
 			    (void **)&peer, sizeof(*peer));
 
-			if (parsepeerconfig(peer, subcfg, ifn->peerssize,
-			    ifn->psk) == -1) {
+			if (parsepeerconfig(peer, subcfg, ifn->peerssize, ifn)
+			    == -1) {
 				e = 1;
 				continue;
 			}
@@ -1119,6 +1315,31 @@ parseconfig(const struct scfge *root)
 			} else if (rc == 0) {
 				warnx("%s: could not find a key in global "
 				    "pskfile", gpskfile);
+				e = 1;
+			}
+		} else {
+			/*
+			 * Look for a global pre-shared key.
+			 */
+			rc = xtrydefaultkey(gpsk, NULL, NULL, NULL);
+
+			if (rc == 1) {
+				/* key loaded! */
+			} else if (rc == 0) {
+				/* no key found, be silent */
+			} else if (rc == -1 && errno == ENOENT) {
+				/* no key found, be silent */
+			} else if (rc == -1) {
+				warn("could not load default global pre-shared "
+				    "key file");
+				e = 1;
+			} else if (rc == -2) {
+				warnx("could not parse default global pre-"
+				    "shared key file");
+				e = 1;
+			} else if (rc == -3) {
+				warnx("xtrydefaultkey global pre-shared key "
+				    "file error");
 				e = 1;
 			}
 		}

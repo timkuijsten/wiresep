@@ -12,7 +12,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: April 27 2019 $
+.Dd $Mdocdate: October 30 2019 $
 .Dt WIRESEP.CONF 5
 .Os
 .Sh NAME
@@ -55,11 +55,17 @@ Set the log facility as used by
 .Ar facility
 must be one of auth, authpriv, cron, daemon, ftp, kern, lpr, mail, news, user,
 uucp or local0 through local7.
-.It Ic psk Ar key
-A default pre-shared key to use for communication on all interfaces with all
-peers.
-.Ar key
-must be encoded in Base64.
+.It Ic pskfile Ar file
+The name of a file that contains a pre-shared key for global use with all peers
+on all interfaces.
+The use of a pre-shared key is optional.
+If the file
+.Pa /etc/wiresep/global.psk
+exists it is automatically used.
+This setting can be overridden per interface and per peer.
+See
+.Sx KEY FILE FORMAT
+for the format of a pre-shared key file.
 .It Ic interface Ar name Brq ...
 The name of an interface.
 .Ar name
@@ -91,8 +97,17 @@ is not yet supported.
 The ip address and port on which to listen for encrypted incoming packets.
 Multiple address and port combinations may be configured.
 This setting is required.
-.It Ic privkey Ar key
-The private key of this interface.
+.It Ic privkeyfile Ar file
+The name of a file that contains the private key for this interface.
+This setting is mandatory, but if it is not set explicitly it will implicitly
+default to
+.Pa /etc/wiresep/tunX.key
+where
+.Sq X
+is the number of the interface.
+See
+.Sx KEY FILE FORMAT
+for the format of a private key file.
 .It Ic peer Oo Ar name Oc Brq ...
 A peer with an optional
 .Ar name
@@ -102,6 +117,20 @@ is used in the logs.
 If it is not set the first eight characters of the peers public key are used.
 See the section about peer specific settings for what can be contained in the
 block.
+.It Ic pskfile Ar file
+The name of a file that contains a pre-shared key for communication with all
+peers on this interface.
+The use of a pre-shared key is optional.
+If the file
+.Pa /etc/wiresep/tunX.psk
+exists it is automatically used, where
+.Sq X
+is the number of the interface.
+An interface specific pre-shared key overrides any global
+.Ar pskfile .
+See
+.Sx KEY FILE FORMAT
+for the format of a pre-shared key file.
 .El
 .Pp
 Note that all global settings can be used within an interface block to override
@@ -121,31 +150,64 @@ is a shorthand for
 This setting is required.
 .It Ic endpoint Ar ip:port
 A known endpoint for this peer.
-.It Ic psk Ar key
-A pre-shared key to use for communication with this peer.
-Overrides any global or interface specific
-.Ar psk .
-The
-.Ar key
-must be encoded in Base64.
+.It Ic pskfile Ar file
+The name of a file that contains a pre-shared key for communication with this
+peer.
+The use of a pre-shared key is optional.
+If the file
+.Pa /etc/wiresep/tunX.peername.psk
+or
+.Pa /etc/wiresep/peername.psk
+exists it is automatically used, where
+.Sq X
+is the number of the interface and
+.Ar peername
+is the
+.Ar name
+that can be specified with the interface specific
+.Ic peer
+setting.
+A peer specific pre-shared key overrides any global or interface specific
+.Ar pskfile .
+See
+.Sx KEY FILE FORMAT
+for the format of a pre-shared key file.
 .It Ic pubkey Ar key
 The peers public key.
 This setting is required.
 .El
+.Ss KEY FILE FORMAT
+The
+.Ic privkeyfile
+and
+.Ic pskfile
+settings refer to a
+.Ar file
+that contains either a private key or a
+pre-shared key, respectively.
+Each file should contain only one key.
+The key itself must be encoded in Base64.
+Any blank line in the file or lines that start with a
+.Sq #
+are ignored, as well as any text that follows a key.
+The file must be owned by the superuser and may not have any permission bits set
+for the group or others.
 .Sh EXAMPLES
 A config file that uses the tun5 device with an internal ip address of
 172.16.0.1 and allows communication with the peer Jane and Joe.
 Jane is allowed to use any source ip, while Joe may only use 172.16.0.25 as the
 source ip of his packets.
-Furthermore, with Joe a pre-shared key is used for additional encryption.
+The private key for the tun5 interface is stored in the default location:
+.Pa /etc/wiresep/tun5.key .
+Furthermore, with Joe a peer specific pre-shared key is used for additional
+encryption by simply storing a Base64 encoded key in a file named
+.Pa /etc/wiresep/joe.psk .
 .Bd -literal -offset indent
 user 1109
 
 interface tun5 {
 	ifaddr 172.16.0.1/24
 	listen 198.51.100.7:1234
-
-	privkey f5tK/SyL1G599SrSLPlul0Z4DFgqMglUrebRH7hSAZs=
 
 	# override global uid
 	user 1200
@@ -158,9 +220,6 @@ interface tun5 {
 	peer joe {
 		pubkey AhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
 		allowedips 172.16.0.25
-
-		# peer specific psk
-		psk 20ZFmc8j/izlCP6sNXhZKKU0RS4U3Gv/3jBg4GGz9hM=
 	}
 }
 .Ed
