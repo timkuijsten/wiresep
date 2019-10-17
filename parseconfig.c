@@ -274,6 +274,71 @@ parsekey(wskey dst, const char *src, size_t srcsize)
 }
 
 /*
+ * Get the number of the name of a tunnel interface.
+ *
+ * Returns the number of the tunnel interface on success, or -1 on failure.
+ */
+static int
+gettunnum(const char *name)
+{
+	int tunnum;
+	char c;
+
+	if (sscanf(name, "tun%d%c", &tunnum, &c) != 1)
+		return -1;
+
+	return tunnum;
+}
+
+/*
+ * Make sure the interface name is in the form tunDDD where DDD is one to three
+ * digits.
+ *
+ * Return 1 if valid, 0 if invalid.
+ */
+static int
+validinterfacename(const char *name)
+{
+	if (gettunnum(name) == -1)
+		return 0;
+
+	return 1;
+}
+
+/*
+ * Make sure the peer name contains no non-graphical characters, no '/' and
+ * does not constitute an interface name or the word "global".
+ *
+ * Return 1 if valid, 0 if invalid.
+ */
+static int
+validpeername(const char *name)
+{
+	size_t i, len;
+
+	len = strlen(name);
+
+	if (len == 0)
+		return 0;
+
+	if (strcasecmp(name, "global") == 0)
+		return 0;
+
+	if (validinterfacename(name))
+		return 0;
+
+	/* no path separators */
+	if (strchr(name, '/') != NULL)
+		return 0;
+
+	for (i = 0; i < len; i++)
+		if (!isgraph(name[i]))
+			return 0;
+
+	return 1;
+}
+
+/*
  * Parse a peer config.
  *
  * Return 0 on success, -1 on error.
@@ -298,7 +363,14 @@ parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber,
 	 * encountered.
 	 */
 	if (cfg->strvsize >= 2) {
-		strlcpy(peer->name, cfg->strv[1], sizeof(peer->name));
+		if (validpeername(cfg->strv[1])) {
+			strlcpy(peer->name, cfg->strv[1], sizeof(peer->name));
+		} else {
+			warnx("%s: invalid peer name. Peer name may not be the "
+			    "word \"global\", be an interface name, contain a "
+			    "'/' or any non-graphical character", peer->name);
+			e = 1;
+		}
 	} else {
 		snprintf(peer->name, sizeof(peer->name), "peer%d", peernumber);
 	}
@@ -516,8 +588,8 @@ parseinterfaceconfigs(void)
 
 		assert(strcasecmp("interface", ifn->scfge->strv[0]) == 0);
 
-		if (sscanf(ifn->scfge->strv[1], "tun%d%c", &tunnum, tundevpath)
-		    != 1 || tunnum < 0) {
+		tunnum = gettunnum(ifn->scfge->strv[1]);
+		if (tunnum == -1) {
 			warnx("interface name must be a device name like tun0 "
 			    "or tun2: %s", ifn->scfge->strv[1]);
 			e = 1;
