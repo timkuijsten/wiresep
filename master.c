@@ -36,7 +36,7 @@
 #define VERSION_PATCH 0
 #endif
 
-#define DEFAULTCONFIG "/etc/wiresep.conf"
+#define DEFAULTCONFIG "/etc/wiresep/wiresep.conf"
 
 typedef int chan[2];
 

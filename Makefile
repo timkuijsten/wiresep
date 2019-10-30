@@ -125,6 +125,7 @@ wiresep.8.html:  wiresep.8
 manhtml: wiresep.8.html wiresep-keygen.1.html wiresep.conf.5.html
 
 install: wiresep wiresep-keygen
+	mkdir -p $(DESTDIR)$(ETCDIR)/wiresep
 	mkdir -p $(DESTDIR)$(BINDIR)
 	mkdir -p $(DESTDIR)$(SBINDIR)
 	mkdir -p $(DESTDIR)$(MANDIR)/man1
@@ -143,3 +144,4 @@ uninstall:
 	rm -f $(DESTDIR)$(MANDIR)/man1/wiresep-keygen.1
 	rm -f $(DESTDIR)$(MANDIR)/man5/wiresep.conf.5
 	rm -f $(DESTDIR)$(MANDIR)/man8/wiresep.8
+	rmdir $(DESTDIR)$(ETCDIR)/wiresep
