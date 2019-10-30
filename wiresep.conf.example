@@ -1,0 +1,28 @@
+# sample wiresep configuration file, see wiresep.conf(5)
+
+# A config file that uses the tun0 device with an internal ip address of
+# 172.16.0.1 and allows communication with the peer Jane and Joe. Jane is
+# allowed to use any source ip, while Joe may only use 172.16.0.25 as the source
+# ip of his packets. The private key for the tun0 interface must be stored in
+# the default location: /etc/wiresep/tun0.key and can be generated with
+# wiresep-keygen(8).
+
+user 1109
+
+interface tun0 {
+	ifaddr 172.16.0.1/24
+	listen 198.51.100.7:1234
+
+	# override global user
+	user 1200
+
+	peer jane {
+		pubkey BhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
+		allowedips *
+	}
+
+	peer joe {
+		pubkey AhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
+		allowedips 172.16.0.25
+	}
+}
