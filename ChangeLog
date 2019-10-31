@@ -1,3 +1,22 @@
+2019-10-31, Version 0.8.0
+
+* private and pre-shared keys should now be put in a separate file
+* automatically look for a private key in /etc/wiresep/tunX.key
+* automatically look for an optional pre-shared key in:
+    1. /etc/wiresep/global.psk
+    2. /etc/wiresep/tunX.psk
+    3. /etc/wiresep/tunX.peerY.psk
+    4. /etc/wiresep/peerY.psk
+* override default paths with new privkeyfile and pskfile config setting
+* loosen up permission requirements on config file now that it no longer
+  contains any secrets
+* set tight resource limits on data and stack size and others
+* updates to documentation and manpages
+* add wiresep.conf.example
+* move the default config file to /etc/wiresep/wiresep.conf
+* fix some inconsistencies in parsing the config file
+
+
 2019-10-13, Version 0.7.0
 
 * completely reimplement session management to improve reliability and
