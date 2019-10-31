@@ -1,7 +1,7 @@
 # Session maintenance
 
-This is a rough sketch of all aspects related to session management. It consists
-of the following:
+This is a sketch of all aspects related to session management. It consists of
+the following:
 * session setup from both the responder and initiator perspective
 * packet send and receive path when a valid session exists
 * session expiry and destruction
@@ -63,8 +63,8 @@ There are three main data structures regarding sessions with a peer:
     sesstentclear() {
     	sesstent.state = INACTIVE
     	sesstent.id = -1
-    	clearRekeyTimeout(sesstent)
     	sesstent.lastreq = 0
+	clearRekeyTimeout(sesstent)
     }
 
     sessnextclear() {
@@ -75,7 +75,7 @@ There are three main data structures regarding sessions with a peer:
 
     // Request a handshake init packet from the enclave, that can then be sent
     // to the peer. Schedule a timeout to detect when the enclave doesn't
-    // responde.
+    // respond.
     sendreqhsinit() {
     	sesstent.state = INITREQ
     	request a handshake initiation packet from the enclave
@@ -172,6 +172,9 @@ Used when a peer started negotiating a new session.
 
 2. Handle new session keys from enclave. The initiation packet from the peer was
 valid.
+Note that we can be in an inactive state if a peer connects from a new
+IP-address and connects through the PROXY process. It is then the proxy that
+forwards the WGINIT to the enclave instead of the IFN process.
 
 ```
     if sessnext.state != INACTIVE && sessnext.state != RESPSENT
@@ -226,8 +229,7 @@ so only now we can start sending data using this session.
 
 ## Data send path
 
-Packet from the tun interface to the Internet while the current session is
-active.
+Packet from the tun interface to the Internet.
 
 ```
     if (sessactive(sesscurr)) {
@@ -250,8 +252,8 @@ active.
 
 ## Data receive path
 
-Packet from the Internet to the tun interface while the session is active
-(must be either the current or the previous session).
+Packet from the Internet to the tun interface. An active session can be either
+the current or the previous session.
 
 ```
     if (!sessactive(sess))
@@ -296,8 +298,8 @@ within 10 seconds.
 ### Rekey timer expires
 
 This can happen while trying to establish a new session as an initiator when
-either the enclave or the peer does not respond within Rekey-Timeout, which is
-five seconds.
+either the enclave or the peer does not respond within Rekey-Timeout (which is
+five seconds).
 
 ```
     notifyproxy(sesstent, isDead);
