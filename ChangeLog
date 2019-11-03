@@ -1,3 +1,10 @@
+2019-11-03, Version 0.8.1
+
+* avoid compiler error about duplicate enumeration
+* debug address family mismatches and reason of inactive sessions
+* don't exit on sendwgdatamsg() failure
+
+
 2019-10-31, Version 0.8.0
 
 * private and pre-shared keys should now be put in a separate file
