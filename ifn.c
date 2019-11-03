@@ -82,7 +82,7 @@ extern int background, verbose;
  * rekey timer will be set until rekey-attempt-time or a session is established.
  */
 struct sesstent {
-	enum { INACTIVE, INITREQ, INITSENT, RESPRECVD } state;
+	enum { STINACTIVE, INITREQ, INITSENT, RESPRECVD } state;
 	int64_t id;
 	utime_t lastreq;
 };
@@ -91,7 +91,7 @@ struct sesstent {
  * Used when a peer started negotiating a new session.
  */
 struct sessnext {
-	enum { INACTIVE, GOTKEYS, RESPSENT } state;
+	enum { SNINACTIVE, GOTKEYS, RESPSENT } state;
 	utime_t lastvrfyinit;
 	utime_t start;
 	int64_t id;
@@ -1011,7 +1011,7 @@ sendreqhsinit(struct peer *peer)
 static void
 ensurehs(struct peer *peer)
 {
-	if (peer->sesstent.state == INACTIVE)
+	if (peer->sesstent.state == STINACTIVE)
 		sendreqhsinit(peer);
 
 	peer->sesstent.lastreq = now;
@@ -1071,7 +1071,7 @@ sesstentclear(struct peer *peer, int timerset)
 	if (timerset && cleartimer(peer->sesstent.id) == -1)
 		logwarn("%s error %x", __func__, peer->sesstent.id);
 
-	peer->sesstent.state = INACTIVE;
+	peer->sesstent.state = STINACTIVE;
 	peer->sesstent.id = -1;
 	peer->sesstent.lastreq = 0;
 }
@@ -1084,7 +1084,7 @@ sessnextclear(struct peer *peer, int keysset)
 		EVP_AEAD_CTX_cleanup(&peer->sessnext.recvctx);
 	}
 
-	peer->sessnext.state = INACTIVE;
+	peer->sessnext.state = SNINACTIVE;
 	peer->sessnext.id = -1;
 	peer->sessnext.peerid = -1;
 	peer->sessnext.lastvrfyinit = 0;
@@ -1780,7 +1780,7 @@ handleenclavemsg(void)
 			}
 		} else {
 			/* 2. handlekeysfromenclave */
-			if (p->sessnext.state != INACTIVE &&
+			if (p->sessnext.state != SNINACTIVE &&
 			    p->sessnext.state != RESPSENT) {
 				logwarnx("MSGSESSKEYS from enclave for "
 				    "responder role unexpected");
