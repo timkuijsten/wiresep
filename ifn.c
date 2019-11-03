@@ -1221,8 +1221,10 @@ sendwgdatamsg(int s, uint32_t receiver, uint64_t counter, const uint8_t *packet,
 	iov[3].iov_len = packetsize;
 
 	rc = writev(s, iov, 4);
-	if (rc < DATAHEADERLEN)
+	if (rc < DATAHEADERLEN) {
+		logwarn("error sending data to %x", receiver);
 		return -1;
+	}
 
 	if ((size_t)rc - DATAHEADERLEN != packetsize)
 		return -1;
@@ -1264,8 +1266,10 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 	}
 
 	if (sendwgdatamsg(sess->peer->s, sess->peerid, sess->nextnonce, out,
-	    outsize) == -1)
-		logexitx(1, "error sending data to %s", sess->peer->name);
+	    outsize) == -1) {
+		logwarnx("error sending data to %s", sess->peer->name);
+		return -1;
+	}
 
 	stats.sockout++;
 	stats.sockoutsz += outsize;
