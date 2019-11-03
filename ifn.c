@@ -1024,17 +1024,36 @@ ensurehs(struct peer *peer)
 static int
 sessactive(const struct session *sess)
 {
-	if (!sess)
-		return 0;
+	if (!sess) {
+		if (verbose > 1)
+			loginfox("%s no sess", __func__);
 
-	if (sess->expack > 0 && sess->expack < now)
 		return 0;
+	}
 
-	if (REJECT_AFTER_TIME < now - sess->start)
-		return 0;
+	if (sess->expack > 0 && sess->expack < now) {
+		if (verbose > 1)
+			loginfox("%s expected ack too late %llu < %llu",
+			    __func__, sess->expack, now);
 
-	if (REJECT_AFTER_MESSAGES < sess->nextnonce)
 		return 0;
+	}
+
+	if (REJECT_AFTER_TIME < now - sess->start) {
+		if (verbose > 1)
+			loginfox("%s REJECT_AFTER_TIME %llu", __func__,
+			    now - sess->start);
+
+		return 0;
+	}
+
+	if (REJECT_AFTER_MESSAGES < sess->nextnonce) {
+		if (verbose > 1)
+			loginfox("%s REJECT_AFTER_MESSAGES %llu", __func__,
+			    sess->nextnonce);
+
+		return 0;
+	}
 
 	return 1;
 }
