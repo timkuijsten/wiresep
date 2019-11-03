@@ -733,13 +733,17 @@ peerconnect(struct peer *p, const struct sockaddr_storage *lsa,
 
 	if (fsa->ss_family != lsa->ss_family) {
 		errno = EAFNOSUPPORT;
-		logwarn("%s address family mismatch", __func__);
+		logwarn("%s address family mismatch: %x %x", __func__,
+		    fsa->ss_family, lsa->ss_family);
+
 		return -1;
 	}
 
 	if (fsa->ss_family != AF_INET6 && fsa->ss_family != AF_INET) {
 		errno = EAFNOSUPPORT;
-		logwarn("%s", __func__);
+		logwarn("%s remote address family not inet6 and not inet: %x",
+		    __func__, fsa->ss_family);
+
 		return -1;
 	}
 
