@@ -4,12 +4,14 @@ INSTALL_ETC 	= install -m 0640
 INSTALL_BIN 	= install -m 0555
 INSTALL_SBIN 	= install -m 0555
 INSTALL_MAN	= install -m 0444
+INSTALL_EXAMPLE	= install -m 0644
 
 PREFIX	= /usr/local
 ETCDIR	= /etc
 BINDIR	= $(PREFIX)/bin
 SBINDIR	= $(PREFIX)/sbin
 MANDIR	= $(PREFIX)/man
+EXAMPLEDIR	= $(PREFIX)/share/examples
 
 VERSION_MAJOR	= 0
 VERSION_MINOR	= 8
@@ -131,12 +133,13 @@ install: wiresep wiresep-keygen
 	mkdir -p $(DESTDIR)$(MANDIR)/man1
 	mkdir -p $(DESTDIR)$(MANDIR)/man5
 	mkdir -p $(DESTDIR)$(MANDIR)/man8
+	mkdir -p $(DESTDIR)$(EXAMPLEDIR)/wiresep
 	$(INSTALL_BIN) wiresep-keygen $(DESTDIR)$(BINDIR)
 	$(INSTALL_SBIN) wiresep $(DESTDIR)$(SBINDIR)
 	$(INSTALL_MAN) wiresep-keygen.1 $(DESTDIR)$(MANDIR)/man1
 	$(INSTALL_MAN) wiresep.conf.5 $(DESTDIR)$(MANDIR)/man5
 	$(INSTALL_MAN) wiresep.8 $(DESTDIR)$(MANDIR)/man8
-	$(INSTALL_ETC) wiresep.conf.example $(DESTDIR)$(ETCDIR)/wiresep
+	$(INSTALL_EXAMPLE) wiresep.conf.example $(DESTDIR)$(EXAMPLEDIR)/wiresep
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/wiresep-keygen
@@ -145,4 +148,6 @@ uninstall:
 	rm -f $(DESTDIR)$(MANDIR)/man5/wiresep.conf.5
 	rm -f $(DESTDIR)$(MANDIR)/man8/wiresep.8
 	rm -f $(DESTDIR)$(ETCDIR)/wiresep/wiresep.conf.example
+	rm -f $(DESTDIR)$(EXAMPLEDIR)/wiresep/wiresep.conf.example
+	rmdir $(DESTDIR)$(EXAMPLEDIR)/wiresep
 	rmdir $(DESTDIR)$(ETCDIR)/wiresep

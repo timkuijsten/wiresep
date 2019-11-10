@@ -27,7 +27,8 @@ $ doas make install
 ```
 
 Generate new keys with [wiresep-keygen(1)] and create a [wiresep.conf(5)] file.
-A sample config can be found in [wiresep.conf.example](wiresep.conf.example).
+A sample config can be found in
+`/usr/local/share/examples/wiresep/[wiresep.conf.example](wiresep.conf.example)`.
 Once everyting is set, run [wiresep(8)]:
 
 ```sh
