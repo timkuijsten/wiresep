@@ -137,7 +137,6 @@ install: wiresep wiresep-keygen
 	$(INSTALL_MAN) wiresep.conf.5 $(DESTDIR)$(MANDIR)/man5
 	$(INSTALL_MAN) wiresep.8 $(DESTDIR)$(MANDIR)/man8
 	$(INSTALL_ETC) wiresep.conf.example $(DESTDIR)$(ETCDIR)/wiresep
-	makewhatis $(DESTDIR)$(MANDIR)
 
 uninstall:
 	rm -f $(DESTDIR)$(BINDIR)/wiresep-keygen
