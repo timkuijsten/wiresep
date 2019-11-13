@@ -31,7 +31,6 @@ int isopenfd(int);
 int readhexnomem(uint8_t *, size_t, const char *, size_t);
 void hexdump(FILE *, const uint8_t *, size_t , size_t);
 int ensurelimit(int, size_t);
-int dropuser(uid_t, gid_t);
 int strtoaddr(struct sockaddr_storage *, const char *, const char *, int);
 int addrtostr(char *, size_t, const struct sockaddr *, int);
 void printopenfds(FILE *, int);

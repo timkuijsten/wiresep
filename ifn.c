@@ -2941,10 +2941,14 @@ ifn_init(int masterport)
 
 	if (chroot(EMPTYDIR) == -1)
 		logexit(1, "chroot %s", EMPTYDIR);
-	if (dropuser(uid, gid) == -1)
-		logexit(1, "dropuser %d:%d", uid, gid);
 	if (chdir("/") == -1)
 		logexit(1, "chdir");
+
+	if (setgroups(1, &gid) ||
+	    setresgid(gid, gid, gid) ||
+	    setresuid(uid, uid, uid))
+		logexit(1, "%s: cannot drop privileges", __func__);
+
 	if (pledge("stdio inet", "") == -1)
 		logexit(1, "pledge");
 }

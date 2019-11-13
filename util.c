@@ -272,37 +272,6 @@ ensurelimit(int resource, size_t limit)
 }
 
 /*
- * Drop real, effective and saved set-user and group ID to a non-superuser and
- * removes all supplementary groups.
- *
- * Return 0 on success, -1 on failure with errno set.
- */
-int
-dropuser(uid_t uid, gid_t gid)
-{
-	if (geteuid() != 0) {
-		errno = EPERM;
-		return -1;
-	}
-
-	if (uid == 0 || gid == 0) {
-		errno = EINVAL;
-		return -1;
-	}
-
-	if (setgroups(1, &gid) == -1)
-		return -1;
-
-	if (setgid(gid) == -1)
-		return -1;
-
-	if (setuid(uid) == -1)
-		return -1;
-
-	return 0;
-}
-
-/*
  * Convert a string representation of a host and/or service name into a socket
  * address structure.
  *
