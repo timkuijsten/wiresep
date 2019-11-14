@@ -667,6 +667,7 @@ void
 logexit(int code, const char *msg, ...)
 {
 	va_list ap;
+	int saved_errno = errno;
 
 	va_start(ap, msg);
 	if (background) {
@@ -684,12 +685,15 @@ logexit(int code, const char *msg, ...)
 		exit(code);
 	}
 	va_end(ap);
+
+	errno = saved_errno;
 }
 
 void
 logexitx(int code, const char *msg, ...)
 {
 	va_list ap;
+	int saved_errno = errno;
 
 	va_start(ap, msg);
 	if (background) {
@@ -702,6 +706,8 @@ logexitx(int code, const char *msg, ...)
 		exit(code);
 	}
 	va_end(ap);
+
+	errno = saved_errno;
 }
 
 /*
@@ -719,6 +725,7 @@ void
 logwarn(const char *msg, ...)
 {
 	va_list ap;
+	int saved_errno = errno;
 
 	if (verbose < -1)
 		return;
@@ -737,12 +744,15 @@ logwarn(const char *msg, ...)
 		}
 	}
 	va_end(ap);
+
+	errno = saved_errno;
 }
 
 void
 logwarnx(const char *msg, ...)
 {
 	va_list ap;
+	int saved_errno = errno;
 
 	if (verbose < -1)
 		return;
@@ -756,12 +766,15 @@ logwarnx(const char *msg, ...)
 		fprintf(stderr, "\n");
 	}
 	va_end(ap);
+
+	errno = saved_errno;
 }
 
 void
 lognotice(const char *msg, ...)
 {
 	va_list ap;
+	int saved_errno = errno;
 
 	if (verbose < 0)
 		return;
@@ -780,12 +793,15 @@ lognotice(const char *msg, ...)
 		}
 	}
 	va_end(ap);
+
+	errno = saved_errno;
 }
 
 void
 lognoticex(const char *msg, ...)
 {
 	va_list ap;
+	int saved_errno = errno;
 
 	if (verbose < 0)
 		return;
@@ -799,12 +815,15 @@ lognoticex(const char *msg, ...)
 		fprintf(stderr, "\n");
 	}
 	va_end(ap);
+
+	errno = saved_errno;
 }
 
 void
 loginfo(const char *msg, ...)
 {
 	va_list ap;
+	int saved_errno = errno;
 
 	if (verbose < 1)
 		return;
@@ -823,12 +842,15 @@ loginfo(const char *msg, ...)
 		}
 	}
 	va_end(ap);
+
+	errno = saved_errno;
 }
 
 void
 loginfox(const char *msg, ...)
 {
 	va_list ap;
+	int saved_errno = errno;
 
 	if (verbose < 1)
 		return;
@@ -842,12 +864,15 @@ loginfox(const char *msg, ...)
 		fprintf(stderr, "\n");
 	}
 	va_end(ap);
+
+	errno = saved_errno;
 }
 
 void
 logdebug(const char *msg, ...)
 {
 	va_list ap;
+	int saved_errno = errno;
 
 	if (verbose < 2)
 		return;
@@ -866,12 +891,15 @@ logdebug(const char *msg, ...)
 		}
 	}
 	va_end(ap);
+
+	errno = saved_errno;
 }
 
 void
 logdebugx(const char *msg, ...)
 {
 	va_list ap;
+	int saved_errno = errno;
 
 	if (verbose < 2)
 		return;
@@ -885,6 +913,8 @@ logdebugx(const char *msg, ...)
 		fprintf(stderr, "\n");
 	}
 	va_end(ap);
+
+	errno = saved_errno;
 }
 
 /*
