@@ -26,9 +26,38 @@ $ make
 $ doas make install
 ```
 
-Generate new keys with [wiresep-keygen(1)] and create a [wiresep.conf(5)] file.
-A sample config can be found in
-`/usr/local/share/examples/wiresep/[wiresep.conf.example](wiresep.conf.example)`.
+Generate new keys with [wiresep-keygen(1)] and create a [wiresep.conf(5)] file
+in */etc/wiresep/wiresep.conf*. A simple configuration example looks like the
+following:
+
+```
+# This is an example of a server listening on the public ip 198.51.100.7 port
+# 1234. It uses the tun0 device with the internal ip addresses 2001:db8::7
+# and 172.16.0.1 and allows communication with the peer Jane and Joe. Jane is
+# allowed to use any source ip, while Joe may only use 2001:db8::4 or
+# 172.16.0.11/30 as the source ip of his packets. The private key for the tun0
+# interface can be stored in the default location: /etc/wiresep/tun0.key and
+# must be generated with wiresep-keygen(8).
+
+# pick an unprivileged user/id
+user 1109
+
+interface tun0 {
+	listen 198.51.100.7:1234
+	ifaddr 2001:db8::7/126 172.16.0.1/24
+
+	peer jane {
+		pubkey BhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
+		allowedips *
+	}
+
+	peer joe {
+		pubkey AhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
+		allowedips 2001:db8::4 172.16.0.11/30
+	}
+}
+```
+
 Once everyting is set, run [wiresep(8)]:
 
 ```sh

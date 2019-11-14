@@ -1,19 +1,21 @@
 # sample wiresep configuration file, see wiresep.conf(5)
 
-# A config file that uses the tun0 device with an internal ip address of
-# 172.16.0.1 and allows communication with the peer Jane and Joe. Jane is
-# allowed to use any source ip, while Joe may only use 172.16.0.25 as the source
-# ip of his packets. The private key for the tun0 interface must be stored in
-# the default location: /etc/wiresep/tun0.key and can be generated with
-# wiresep-keygen(8).
+# This is an example of a server listening on the public ip 198.51.100.7 port
+# 1234. It uses the tun0 device with the internal ip addresses 2001:db8::7
+# and 172.16.0.1 and allows communication with the peer Jane and Joe. Jane is
+# allowed to use any source ip, while Joe may only use 2001:db8::4 or
+# 172.16.0.11/30 as the source ip of his packets. The private key for the tun0
+# interface can be stored in the default location: /etc/wiresep/tun0.key and
+# must be generated with wiresep-keygen(8).
 
+# pick an unprivileged user/id
 user 1109
 
 interface tun0 {
-	ifaddr 172.16.0.1/24
 	listen 198.51.100.7:1234
+	ifaddr 2001:db8::7/126 172.16.0.1/24
 
-	# override global user
+	# override the global user for this specific interface (optional)
 	user 1200
 
 	peer jane {
@@ -23,6 +25,6 @@ interface tun0 {
 
 	peer joe {
 		pubkey AhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
-		allowedips 172.16.0.25
+		allowedips 2001:db8::4 172.16.0.11/30
 	}
 }
