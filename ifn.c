@@ -43,6 +43,7 @@
 
 #include "antireplay.h"
 #include "util.h"
+#include "wiresep.h"
 #include "wireprot.h"
 
 #define ND6_INFINITE_LIFETIME 0xffffffff
@@ -67,7 +68,7 @@
 
 #define MAXQUEUEPACKETS 1000
 #define MAXQUEUEPACKETSDATASZ ((size_t)(MAXSCRATCH * MAXQUEUEPACKETS))
-#define MAXDATA  (1 << 21) /* cap malloc(3) and mmap(2) to 2 MB */
+#define MINDATA  (1 << 21) /* minimum dynamic memory without peers / packets */
 #define MAXSTACK (1 << 15) /* 32 KB should be enough */
 
 /*
@@ -2870,7 +2871,7 @@ void
 ifn_init(int masterport)
 {
 	struct sigaction sa;
-	size_t n;
+	size_t heapneeded, n;
 	int stdopen;
 
 	recvconfig(masterport);
@@ -2917,7 +2918,28 @@ ifn_init(int masterport)
 	if (verbose > 1)
 		loginfox("%s created", ifn->ifname);
 
-	if (ensurelimit(RLIMIT_DATA, MAXDATA) == -1)
+	/*
+	 * Calculate the amount of dynamic memory we need. Ignore number of
+	 * peer allowed addresses. It doesn't have to be perfectly tight.
+	 */
+
+	if (ifn->peerssize > MAXPEERS)
+		logexit(1, "number of peers exceeds maximum %zu %zu",
+		    ifn->peerssize, MAXPEERS);
+
+	heapneeded = MINDATA;
+	heapneeded += ifn->peerssize * sizeof(struct session) * 2;
+	heapneeded += ifn->peerssize * MAXQUEUEPACKETSDATASZ;
+	heapneeded += ifn->peerssize * sizeof(struct peer);
+	heapneeded += ifn->peerssize * 8;
+	heapneeded += ifn->ifaddrssize * sizeof(struct cidraddr);
+	heapneeded += ifn->ifaddrssize * 8;
+	heapneeded += ifn->listenaddrssize * sizeof(struct sockaddr_storage);
+	heapneeded += ifn->listenaddrssize * 8;
+	heapneeded += sizeof(struct ifn);
+	heapneeded += (ifn->peerssize + 10) * sizeof(struct kevent);
+
+	if (ensurelimit(RLIMIT_DATA, heapneeded) == -1)
 		logexit(1, "ensurelimit data");
 	if (ensurelimit(RLIMIT_FSIZE, 0) == -1)
 		logexit(1, "ensurelimit fsize");
