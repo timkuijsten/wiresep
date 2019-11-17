@@ -37,7 +37,7 @@
 #include "wiresep.h"
 
 #define TAGLEN 16
-#define MAXDATA  (1 << 20) /* cap malloc(3) and mmap(2) to 1 MB */
+#define MINDATA  (1 << 21) /* malloc(3) and mmap(2) without ifn or peers */
 #define MAXSTACK (1 << 15) /* 32 KB should be enough */
 
 void enclave_printinfo(FILE *);
@@ -1030,6 +1030,9 @@ enclave_serv(void)
 	if ((ev = calloc(evsize, sizeof(*ev))) == NULL)
 		logexit(1, "calloc ev");
 
+	loginfox("calloc ev %zu * %zu = %zu", evsize, sizeof(*ev),
+	    evsize * sizeof(*ev));
+
 	for (n = 0; n < ifnvsize; n++)
 		EV_SET(&ev[n], ifnv[n]->port, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
@@ -1140,6 +1143,9 @@ recvconfig(int masterport)
 	if ((ifnv = calloc(ifnvsize, sizeof(*ifnv))) == NULL)
 		logexit(1, "calloc ifnv");
 
+	loginfox("calloc ifnv %zu * %zu = %zu", ifnvsize, sizeof(*ifnv),
+	    ifnvsize * sizeof(*ifnv));
+
 	for (n = 0; n < ifnvsize; n++) {
 		msgsize = sizeof(smsg);
 		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
@@ -1151,6 +1157,8 @@ recvconfig(int masterport)
 			logexit(1, "malloc ifn");
 		ifnv[n] = ifn;
 
+		loginfox("malloc ifn %zu", sizeof(*ifn));
+
 		assert(n == smsg.ifn.ifnid);
 
 		ifn->id = smsg.ifn.ifnid;
@@ -1161,6 +1169,9 @@ recvconfig(int masterport)
 		if ((ifn->peers = calloc(ifn->peerssize,
 		    sizeof(*ifn->peers))) == NULL)
 			logexit(1, "calloc ifnv->peers");
+
+		loginfox("calloc ifn->peers %zu * %zu = %zu", ifn->peerssize,
+		    sizeof(*ifn->peers), ifn->peerssize *  sizeof(*ifn->peers));
 
 		memcpy(ifn->privkey, smsg.ifn.privkey,
 		    sizeof(smsg.ifn.privkey));
@@ -1175,6 +1186,8 @@ recvconfig(int masterport)
 		for (m = 0; m < ifn->peerssize; m++) {
 			if ((p = malloc(sizeof(*p))) == NULL)
 				logexit(1, "malloc peer");
+
+			loginfox("malloc peer %zu", sizeof(*p));
 
 			msgsize = sizeof(smsg);
 			if (wire_recvmsg(masterport, &mtcode, &smsg,
@@ -1203,6 +1216,8 @@ recvconfig(int masterport)
 			if ((p->hs = malloc(sizeof(*p->hs))) == NULL)
 				logexit(1, "malloc hs");
 
+			loginfox("malloc peer->hs %zu", sizeof(*p->hs));
+
 			memset(p->recvts, 0, sizeof(p->recvts));
 			p->hs->peer = p;
 			ifn->peers[m] = p;
@@ -1230,7 +1245,7 @@ void
 enclave_init(int masterport)
 {
 	struct sigaction sa;
-	size_t n;
+	size_t heapneeded, n, nrpeers;
 	int stdopen;
 
 	recvconfig(masterport);
@@ -1257,7 +1272,28 @@ enclave_init(int masterport)
 	if ((size_t)getdtablecount() != stdopen + 2 + ifnvsize)
 		logexitx(1, "descriptor mismatch: %d", getdtablecount());
 
-	if (ensurelimit(RLIMIT_DATA, MAXDATA) == -1)
+	/*
+	 * Calculate the amount of dynamic memory we need.
+	 *
+	 * Unfortunately we cannot allocate everything upfront and then disable
+	 * new allocations because EVP_AEAD_CTX_init(3) uses malloc.
+	 */
+
+	nrpeers = 0;
+	for (n = 0; n < ifnvsize; n++)
+		nrpeers += ifnv[n]->peerssize;
+
+	if (nrpeers > MAXPEERS)
+		logexit(1, "number of peers exceeds maximum %zu %zu", nrpeers,
+		    MAXPEERS);
+
+	heapneeded = MINDATA;
+	heapneeded += nrpeers * sizeof(struct peer);
+	heapneeded += nrpeers * 8;
+	heapneeded += ifnvsize * sizeof(struct ifn);
+	heapneeded += (ifnvsize + 1) * sizeof(struct kevent);
+
+	if (ensurelimit(RLIMIT_DATA, heapneeded) == -1)
 		logexit(1, "ensurelimit data");
 	if (ensurelimit(RLIMIT_FSIZE, 0) == -1)
 		logexit(1, "ensurelimit fsize");

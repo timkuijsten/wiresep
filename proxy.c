@@ -31,7 +31,6 @@
 #include "wireprot.h"
 #include "wiresep.h"
 
-#define MAXPEERS 10000
 #define MAXDATA  (1 << 21) /* cap malloc(3) and mmap(2) to 2 MB */
 #define MAXSTACK (1 << 15) /* 32 KB should be enough */
 
