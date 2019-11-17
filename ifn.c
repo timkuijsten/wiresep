@@ -2274,10 +2274,12 @@ sesshandletimeout(struct kevent *ev)
 		 * in that case the tentative id was not communicated to the
 		 * proxy and only used as a rekey timeout timer.
 		 */
-		if (notifyproxy(peer->id, peer->sesstent.id, SESSIDDESTROY)
-		    == -1)
-			logwarnx("proxy notification of destroyed tentative"
-			    "session id failed");
+		if (peer->sesstent.state >= INITSENT) {
+			if (notifyproxy(peer->id, peer->sesstent.id,
+			    SESSIDDESTROY) == -1)
+				logwarnx("proxy notification of destroyed "
+				    "tentative session id failed");
+		}
 
 		/*
 		 * Request a new handshake init message from the enclave as long
