@@ -31,7 +31,7 @@
 #include "wireprot.h"
 #include "wiresep.h"
 
-#define MAXDATA  (1 << 21) /* cap malloc(3) and mmap(2) to 2 MB */
+#define MINDATA  (1 << 21) /* cap minimum malloc(3) and mmap(2) to 2 MB */
 #define MAXSTACK (1 << 15) /* 32 KB should be enough */
 
 void proxy_loginfo(void);
@@ -77,7 +77,6 @@ struct ifn {
 	size_t peerssize;
 	struct sessmap **sessmapv;
 	size_t sessmapvsize;
-
 };
 
 static uid_t uid;
@@ -777,7 +776,7 @@ proxy_init(int masterport)
 	char addrstr[MAXIPSTR];
 	struct sockaddr_storage *listenaddr;
 	struct sigaction sa;
-	size_t i, m, n;
+	size_t heapneeded, i, m, n, nrlistenaddrs, nrpeers, nrsessmaps;
 	int stdopen, s;
 	socklen_t len;
 
@@ -871,7 +870,35 @@ proxy_init(int masterport)
 	if (verbose > 1)
 		loginfox("server sockets created: ");
 
-	if (ensurelimit(RLIMIT_DATA, MAXDATA) == -1)
+	/*
+	 * Calculate roughly the amount of dynamic memory we need.
+	 *
+	 * XXX Unfortunately we cannot allocate everything upfront and then
+	 * disable new allocations because it breaks forwarding packets somehow.
+	 */
+
+	nrlistenaddrs = 0;
+	nrpeers = 0;
+	nrsessmaps = 0;
+	for (n = 0; n < ifnvsize; n++) {
+		nrlistenaddrs += ifnv[n]->listenaddrssize;
+		nrpeers += ifnv[n]->peerssize;
+		nrsessmaps += ifnv[n]->sessmapvsize;
+	}
+
+	if (nrpeers > MAXPEERS)
+		logexit(1, "number of peers exceeds maximum %zu %zu", nrpeers,
+		    MAXPEERS);
+
+	heapneeded = MINDATA;
+	heapneeded += nrpeers * sizeof(struct peer);
+	heapneeded += ifnvsize * sizeof(struct ifn);
+	heapneeded += nrlistenaddrs * sizeof(struct sockaddr_storage);
+	heapneeded += nrsessmaps * sizeof(struct sessmap);
+	heapneeded += sockmapvsize * sizeof(struct kevent);
+	heapneeded += sockmapvsize * sizeof(struct sockmap);
+
+	if (ensurelimit(RLIMIT_DATA, heapneeded) == -1)
 		logexit(1, "ensurelimit data");
 	if (ensurelimit(RLIMIT_FSIZE, 0) == -1)
 		logexit(1, "ensurelimit fsize");
