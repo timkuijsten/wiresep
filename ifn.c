@@ -2428,7 +2428,7 @@ ifn_serv(void)
 					loginfox("enclave event");
 
 				if (handleenclavemsg() == -1)
-					logexitx(1, "enclave error");
+					logwarnx("enclave error");
 			} else if ((int)ev[i].ident == tund) {
 				if (verbose > 1)
 					loginfox("tun event");
