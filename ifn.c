@@ -2876,6 +2876,8 @@ ifn_init(int masterport)
 
 	recvconfig(masterport);
 
+	setproctitle("%s", ifn->ifname);
+
 	/*
 	 * Make sure we are not missing any communication channels and that
 	 * there is no descriptor leak.

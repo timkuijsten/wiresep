@@ -157,7 +157,7 @@ main(int argc, char **argv)
 			if (errstr != NULL)
 				errx(1, "invalid enclave/master fd: %s %s",
 				    errstr, optarg);
-			setproctitle(NULL);
+			setproctitle("enclave");
 			enclave_init(masterport);
 			enclave_serv();
 			errx(1, "enclave[%d]: unexpected return", getpid());
@@ -166,7 +166,7 @@ main(int argc, char **argv)
 			if (errstr != NULL)
 				errx(1, "invalid ifn/master fd: %s %s",
 				    errstr, optarg);
-			setproctitle(NULL);
+			setproctitle("ifn"); /* overridden by ifn process */
 			ifn_init(masterport);
 			ifn_serv();
 			errx(1, "ifn[%d]: unexpected return", getpid());
@@ -175,7 +175,7 @@ main(int argc, char **argv)
 			if (errstr != NULL)
 				errx(1, "invalid proxy/master fd: %s %s",
 				    errstr, optarg);
-			setproctitle(NULL);
+			setproctitle("proxy");
 			proxy_init(masterport);
 			proxy_serv();
 			errx(1, "proxy[%d]: unexpected return", getpid());
@@ -184,7 +184,7 @@ main(int argc, char **argv)
 			if (errstr != NULL)
 				errx(1, "invalid mastermaster descriptor: %s "
 				    "%s", errstr, optarg);
-			setproctitle(NULL);
+			setproctitle("master");
 
 			if (chroot(EMPTYDIR) == -1 || chdir("/") == -1)
 				err(1, "chroot %s", EMPTYDIR);
@@ -362,7 +362,8 @@ main(int argc, char **argv)
 
 	for (n = 0; n < ifnvsize; n++) {
 		/*
-		 * Open an interface channel with master, enclave and proxy, respectively
+		 * Open an interface channel with master, enclave and proxy,
+		 * respectively.
 		 */
 
 		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
@@ -387,9 +388,9 @@ main(int argc, char **argv)
 		case -1:
 			logexit(1, "fork %s", ifnv[n]->ifname);
 		case 0:
-			setprogname(ifnv[n]->ifname);
-			if (verbose > 1)
-				loginfox("%d", getpid());
+			if (verbose > 0)
+				lognoticex("ifn %s %d", ifnv[n]->ifname,
+				    getpid());
 
 			for (m = 0; m <= n; m++) {
 				close(ifnv[n]->mastwithifn);
@@ -446,9 +447,8 @@ main(int argc, char **argv)
 	case -1:
 		logexit(1, "fork enclave");
 	case 0:
-		setprogname("enclave");
-		if (verbose > 1)
-			loginfox("%d", getpid());
+		if (verbose > 0)
+			lognoticex("enclave %d", getpid());
 
 		for (n = 0; n < ifnvsize; n++) {
 			close(ifnv[n]->mastwithifn);
@@ -485,9 +485,8 @@ main(int argc, char **argv)
 	case -1:
 		logexit(1, "fork proxy");
 	case 0:
-		setprogname("proxy");
-		if (verbose > 1)
-			loginfox("%d", getpid());
+		if (verbose > 0)
+			lognoticex("proxy %d", getpid());
 
 		for (n = 0; n < ifnvsize; n++)
 			close(ifnv[n]->mastwithifn);
@@ -515,9 +514,8 @@ main(int argc, char **argv)
 
 	assert(getdtablecount() == stdopen + 2 + (int)ifnvsize);
 
-	setprogname("master");
-	if (verbose > 1)
-		loginfox("%d", getpid());
+	if (verbose > 0)
+		lognoticex("master %d", getpid());
 
 	if (verbose > 1)
 		printdescriptors();
