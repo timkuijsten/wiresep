@@ -1,3 +1,11 @@
+2019-11-18, Version 0.8.3
+
+* don't change the process name, keep wiresep
+* let resource limits take the configuration into account
+* treat OOM errors in the main loop as transient
+* don't notify proxy to destroy unsent sessions
+
+
 2019-11-14, Version 0.8.2
 
 * replace dropuser with setresuid(2)
