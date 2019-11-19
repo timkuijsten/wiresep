@@ -1,4 +1,4 @@
-CFLAGS = -Wall -Wextra -pedantic-errors -O0 -g
+CFLAGS += -Wall -Wextra -pedantic-errors
 
 INSTALL_ETC 	= install -m 0640
 INSTALL_BIN 	= install -m 0555
