@@ -26,9 +26,17 @@ $ make
 $ doas make install
 ```
 
-Generate new keys with [wiresep-keygen(1)] and create a [wiresep.conf(5)] file
-in */etc/wiresep/wiresep.conf*. A simple configuration example looks like the
-following:
+Create a new user:
+
+```sh
+doas useradd -c 'WireSep Daemon' -d /var/empty -L daemon -s /sbin/nologin -u 505 _wiresep
+```
+
+Generate a new private key with
+[wiresep-keygen(1)] and store it in `/etc/wiresep/tun0.key`. Make sure only the
+superuser can access this file. Then create a
+[wiresep.conf(5)] file in */etc/wiresep/wiresep.conf*. A simple configuration
+example looks like the following:
 
 ```
 # This is an example of a server listening on the public ip 198.51.100.7 port
@@ -38,9 +46,6 @@ following:
 # 172.16.0.11/30 as the source ip of his packets. The private key for the tun0
 # interface can be stored in the default location: /etc/wiresep/tun0.key and
 # must be generated with wiresep-keygen(8).
-
-# pick an unprivileged user/id
-user 1109
 
 interface tun0 {
 	listen 198.51.100.7:1234

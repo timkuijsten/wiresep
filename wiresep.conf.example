@@ -8,15 +8,9 @@
 # interface can be stored in the default location: /etc/wiresep/tun0.key and
 # must be generated with wiresep-keygen(8).
 
-# pick an unprivileged user/id
-user 1109
-
 interface tun0 {
 	listen 198.51.100.7:1234
 	ifaddr 2001:db8::7/126 172.16.0.1/24
-
-	# override the global user for this specific interface (optional)
-	user 1200
 
 	peer jane {
 		pubkey BhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=

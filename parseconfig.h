@@ -24,6 +24,7 @@
 #include "wireprot.h"
 #include "wiresep.h"
 
+#define DFLUSER "_wiresep"
 #define MAXIFNDESC 65
 #define MAXPEERNAME 8
 

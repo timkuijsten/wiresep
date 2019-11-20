@@ -29,19 +29,6 @@ interface specific settings can be overridden per peer.
 .Ss GLOBAL SETTINGS
 The following global settings are recognized:
 .Bl -tag -width Ds
-.It Ic user Ar name
-Set the user as which to run
-.Xr wiresep 8 .
-.Ar name
-must be either the name of an existing user in the
-.Xr passwd 5
-database.
-Or an id in the range of 1 to 65535.
-If a name is specified the primary group of this user will be used as the group
-of the process.
-If an id is specified for
-.Ar name
-then the group of the process will be set to the same id.
 .It Ic group Ar name
 Set the group as which to run
 .Xr wiresep 8 .
@@ -49,6 +36,20 @@ Set the group as which to run
 must be either the name of an existing group from the
 .Xr group 5
 database or an id in the range of 1 to 65535.
+If not set it defaults to the primary group of the effective
+.Ar user .
+.It Ic interface Ar name Brq ...
+The name of an interface.
+.Ar name
+must start with
+.Dq tun
+followed by a number.
+The named interface must exist in
+.Pa /dev
+and can be created with
+.Xr MAKEDEV 8 .
+See the section about interface specific settings for what can be contained in
+the block.
 .It Ic log facility Ar facility
 Set the log facility as used by
 .Xr syslog 3 .
@@ -66,18 +67,20 @@ This setting can be overridden per interface and per peer.
 See
 .Sx KEY FILE FORMAT
 for the format of a pre-shared key file.
-.It Ic interface Ar name Brq ...
-The name of an interface.
+.It Ic user Ar name
+Set the user as which to run
+.Xr wiresep 8 .
 .Ar name
-must start with
-.Dq tun
-followed by a number.
-The named interface must exist in
-.Pa /dev
-and can be created with
-.Xr MAKEDEV 8 .
-See the section about interface specific settings for what can be contained in
-the block.
+must be either the name of an existing user in the
+.Xr passwd 5
+database or an id in the range of 1 to 65535.
+If a name is specified the primary group of this user will be used as the group
+of the process.
+If an id is specified for
+.Ar name
+then the group of the process will be set to the same id.
+If not set it defaults to the user
+.Dq _wiresep .
 .El
 .Ss INTERFACE SPECIFIC SETTINGS
 The following interface specific settings are recognized:
@@ -204,15 +207,9 @@ Furthermore, with Joe a peer specific pre-shared key is used for quantum-proof
 encryption by simply storing a Base64 encoded key in a file named
 .Pa /etc/wiresep/joe.psk .
 .Bd -literal -offset indent
-# pick an unprivileged user/id
-user 1109
-
 interface tun5 {
 	listen 198.51.100.7:1234
 	ifaddr 2001:db8::7/126 172.16.0.1/24
-
-	# override the global user for this specific interface (optional)
-	user 1200
 
 	peer jane {
 		pubkey BhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=

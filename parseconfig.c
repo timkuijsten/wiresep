@@ -1237,13 +1237,7 @@ parseconfig(const struct scfge *root)
 				e = 1;
 				continue;
 			}
-			if (resolveuser(&guid, &ggid, subcfg->strv[1]) == -1) {
-				warnx("%s: %s invalid: %s",
-				    "global", key, subcfg->strv[1]);
-				e = 1;
-				continue;
-			}
-			guser = "SET";
+			guser = subcfg->strv[1];
 		} else if (strcasecmp("group", key) == 0) {
 			if (subcfg->strvsize != 2) {
 				warnx("%s: %s must contain one name "
@@ -1257,14 +1251,7 @@ parseconfig(const struct scfge *root)
 				e = 1;
 				continue;
 			}
-			if (resolvegroup(&ggid, subcfg->strv[1])
-			    == -1) {
-				warnx("%s: %s invalid: %s",
-				    "global", key, subcfg->strv[1]);
-				e = 1;
-				continue;
-			}
-			ggroup = "SET";
+			ggroup = subcfg->strv[1];
 		} else if (strcasecmp("psk", key) == 0) {
 			if (subcfg->strvsize != 2) {
 				warnx("psk must have one value");
@@ -1342,6 +1329,22 @@ parseconfig(const struct scfge *root)
 				    "file error");
 				e = 1;
 			}
+		}
+	}
+
+	if (!guser)
+		guser = DFLUSER;
+
+	if (resolveuser(&guid, &ggid, guser) == -1) {
+		warnx("global: user invalid: %s", guser);
+		e = 1;
+	}
+
+	/* override the group if it is explicitly set */
+	if (ggroup) {
+		if (resolvegroup(&ggid, ggroup) == -1) {
+			warnx("global: group invalid: %s", ggroup);
+			e = 1;
 		}
 	}
 
