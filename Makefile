@@ -15,7 +15,7 @@ EXAMPLEDIR	= $(PREFIX)/share/examples
 
 VERSION_MAJOR	= 0
 VERSION_MINOR	= 8
-VERSION_PATCH	= 3
+VERSION_PATCH	= 4
 
 SRCFILES = base64.c enclave.c master.c proxy.c test.c wireprot.c wiresep.c \
 	    ifn.c parseconfig.c tai64n.c util.c wiresep-keygen.c

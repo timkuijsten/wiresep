@@ -1,3 +1,9 @@
+2019-11-20, Version 0.8.4
+
+* default the user to "_wiresep" if omitted
+* append to CFLAGS from environment and drop default -O0 -g
+
+
 2019-11-18, Version 0.8.3
 
 * don't change the process name, keep wiresep
