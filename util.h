@@ -25,7 +25,11 @@
 #include <stdio.h>
 
 #define EMPTYDIR "/var/empty"
-#define MAXIPSTR 40 /* full ipv6 address in hex notation with terminating nul */
+/* ethernet address in hex notation with terminating nul */
+#define MAXLINKSTR 18
+/* full ipv6 address in hex notation with braces, port and terminating nul */
+#define MAXIPSTR 49
+#define MAXADDRSTR (MAXIPSTR > MAXLINKSTR ? MAXIPSTR : MAXLINKSTR)
 
 int isopenfd(int);
 int readhexnomem(uint8_t *, size_t, const char *, size_t);

@@ -418,7 +418,7 @@ runcatcher(int ipc[2], int ifnwithprox, int enclwithprox)
 static void
 testproxy_init(int masterport)
 {
-	char addrstr[MAXIPSTR];
+	char addrstr[MAXADDRSTR];
 	struct sockaddr_storage *listenaddr;
 	struct sigaction sa;
 	size_t i, m, n;

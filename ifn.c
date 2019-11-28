@@ -244,7 +244,7 @@ logsessinfo(const char *pre, const struct session *sess)
 static void
 logpeerinfo(const struct peer *peer)
 {
-	char addrstr[MAXIPSTR];
+	char addrstr[MAXADDRSTR];
 	size_t n;
 
 	logwarnx("peer %u %s", peer->id, peer->name);
@@ -277,7 +277,7 @@ logpeerinfo(const struct peer *peer)
 static void
 ifn_loginfo(void)
 {
-	char addrstr[MAXIPSTR];
+	char addrstr[MAXADDRSTR];
 	size_t n;
 
 	logwarnx("id %u %s", ifn->id, ifn->ifname);
@@ -724,7 +724,7 @@ static int
 peerconnect(struct peer *p, const struct sockaddr_storage *lsa,
     const struct sockaddr_storage *fsa)
 {
-	char addrstr1[MAXIPSTR], addrstr2[MAXIPSTR];
+	char addrstr1[MAXADDRSTR], addrstr2[MAXADDRSTR];
 	static struct sockaddr_storage ss;
 	struct sockaddr_in6 *src6, *sin6;
 	struct sockaddr_in *src4, *sin4;
@@ -2333,7 +2333,7 @@ sesshandletimeout(struct kevent *ev)
 void
 ifn_serv(void)
 {
-	char addrstr[MAXIPSTR];
+	char addrstr[MAXADDRSTR];
 	struct sockaddr_storage ss, *listenaddr;
 	struct peer *peer;
 	struct kevent *ev;
@@ -2608,7 +2608,7 @@ peernew(uint32_t id, const char *name)
 static void
 recvconfig(int masterport)
 {
-	char addrstr[MAXIPSTR];
+	char addrstr[MAXADDRSTR];
 	static union {
 		struct sinit init;
 		struct sifn ifn;

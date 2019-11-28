@@ -27,6 +27,8 @@
 #include <inttypes.h>
 #include <limits.h>
 #include <netdb.h>
+#include <net/if_dl.h>
+#include <net/if_types.h>
 #include <pwd.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -302,16 +304,63 @@ strtoaddr(struct sockaddr_storage *r, const char *name, const char *serv,
 }
 
 /*
+ * Convert a datalink address to a string representation.
+ *
+ * Note: If "out" is at least one byte then nul termination is guaranteed.
+ *
+ * Return 0 on success, or -1 on error, i.e. if outsize was not big enough. On
+ * error a descriptive string is written to "out".
+ */
+int
+dltostr(char *out, size_t outsize, const struct sockaddr_dl *sdl)
+{
+	const uint8_t *cp;
+
+	if (out == NULL || outsize == 0)
+		return -1;
+
+	out[0] = '\0';
+
+	if (sdl == NULL || sdl->sdl_family != AF_LINK) {
+		snprintf(out, outsize, "sdl may not by null and must be of type"
+		    " AF_LINK");
+		return -1;
+	}
+
+	/* try to append ethernet address */
+	if (sdl->sdl_type == IFT_ETHER) {
+		cp = (uint8_t *)&sdl->sdl_data[sdl->sdl_nlen];
+		if ((size_t)snprintf(out, outsize,
+		    "%.*s%%%d %02x:%02x:%02x:%02x:%02x:%02x",
+		    sdl->sdl_nlen, sdl->sdl_data, sdl->sdl_index,
+		    *cp, *(cp + 1), *(cp + 2), *(cp + 3), *(cp + 4), *(cp + 5))
+		    >= outsize) {
+			snprintf(out, outsize, "out too small");
+			return -1;
+		}
+	} else {
+		if ((size_t)snprintf(out, outsize, "%.*s%%%d", sdl->sdl_nlen,
+		    sdl->sdl_data, sdl->sdl_index) >= outsize) {
+			snprintf(out, outsize, "out too small");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+/*
  * Convert an ip address to a string representation.
  *
  * Note: If "out" is at least one byte then nul termination is guaranteed.
  * Note2: if "outsize" >= MAXIPSTR than any succesfully resolved ip-address will
  * always fit.
  *
- * Return 0 on success, or -1 on error, i.e. if outsize was not big enough.
+ * Return 0 on success, or -1 on error, i.e. if outsize was not big enough. On
+ * error a descriptive string is written to "out".
  */
 int
-addrtostr(char *out, size_t outsize, const struct sockaddr *sa, int noport)
+inettostr(char *out, size_t outsize, const struct sockaddr *sa, int noport)
 {
 	char host[NI_MAXHOST], serv[NI_MAXSERV];
 	const char *fmt;
@@ -322,14 +371,18 @@ addrtostr(char *out, size_t outsize, const struct sockaddr *sa, int noport)
 
 	out[0] = '\0';
 
-	if (sa == NULL)
+	if (sa == NULL) {
+		snprintf(out, outsize, "sa may not by null");
 		return -1;
+	}
 
 	e = getnameinfo(sa, sa->sa_len, host, sizeof(host), serv, sizeof(serv),
 	    NI_NUMERICHOST | NI_NUMERICSERV);
 
-	if (e)
+	if (e) {
+		snprintf(out, outsize, "%s", gai_strerror(e));
 		return -1;
+	}
 
 	if (sa->sa_family == AF_INET6) {
 		if (noport) {
@@ -346,14 +399,50 @@ addrtostr(char *out, size_t outsize, const struct sockaddr *sa, int noport)
 	}
 
 	if (noport) {
-		if ((size_t)snprintf(out, outsize, fmt, host) >= outsize)
+		if ((size_t)snprintf(out, outsize, fmt, host) >= outsize) {
+			snprintf(out, outsize, "out too small");
 			return -1;
+		}
 	} else {
-		if ((size_t)snprintf(out, outsize, fmt, host, serv) >= outsize)
+		if ((size_t)snprintf(out, outsize, fmt, host, serv)
+		    >= outsize) {
+			snprintf(out, outsize, "out too small");
 			return -1;
+		}
 	}
 
 	return 0;
+}
+
+/*
+ * Convert a hardware or ip address to a string representation.
+ *
+ * Note: If "out" is at least one byte then nul termination is guaranteed.
+ * Note2: if "outsize" >= MAXADDRSTR than any succesfully resolved address will
+ * always fit.
+ *
+ * Return 0 on success, or -1 on error, i.e. if outsize was not big enough. On
+ * error a descriptive string is written to "out".
+ */
+int
+addrtostr(char *out, size_t outsize, const struct sockaddr *sa, int noport)
+{
+	if (sa == NULL) {
+		snprintf(out, outsize, "sa may not by null");
+		return -1;
+	}
+
+	switch (sa->sa_family) {
+	case AF_LINK:
+		return dltostr(out, outsize, (struct sockaddr_dl *)sa);
+	case AF_INET6:
+	case AF_INET:
+		return inettostr(out, outsize, sa, noport);
+	default:
+		snprintf(out, outsize, "unsupported address family %d",
+		    sa->sa_family);
+		return -1;
+	}
 }
 
 void

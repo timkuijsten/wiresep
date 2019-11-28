@@ -773,7 +773,7 @@ recvconfig(int masterport)
 void
 proxy_init(int masterport)
 {
-	char addrstr[MAXIPSTR];
+	char addrstr[MAXADDRSTR];
 	struct sockaddr_storage *listenaddr;
 	struct sigaction sa;
 	size_t heapneeded, i, m, n, nrlistenaddrs, nrpeers, nrsessmaps;
