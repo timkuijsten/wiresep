@@ -40,6 +40,12 @@
 #define MINDATA  (1 << 21) /* malloc(3) and mmap(2) without ifn or peers */
 #define MAXSTACK (1 << 15) /* 32 KB should be enough */
 
+#ifdef DEBUG
+#define MAXCORE (1024 * 1024 * 10)
+#else
+#define MAXCORE 0
+#endif
+
 void enclave_printinfo(FILE *);
 
 extern int background, verbose;
@@ -1280,8 +1286,10 @@ enclave_init(int masterport)
 
 	if (ensurelimit(RLIMIT_DATA, heapneeded) == -1)
 		logexit(1, "ensurelimit data");
-	if (ensurelimit(RLIMIT_FSIZE, 0) == -1)
+	if (ensurelimit(RLIMIT_FSIZE, MAXCORE) == -1)
 		logexit(1, "ensurelimit fsize");
+	if (ensurelimit(RLIMIT_CORE, MAXCORE) == -1)
+		logexit(1, "ensurelimit core");
 	if (ensurelimit(RLIMIT_MEMLOCK, 0) == -1)
 		logexit(1, "ensurelimit memlock");
 	/* kqueue will be opened later */
