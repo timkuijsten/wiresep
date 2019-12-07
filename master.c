@@ -326,8 +326,10 @@ main(int argc, char **argv)
 		    &logfacilitystr);
 	}
 
-	if (configtest)
+	if (configtest) {
+		fprintf(stdout, "configuration OK\n");
 		exit(0);
+	}
 
 	if (!foreground) {
 		background = 1;
