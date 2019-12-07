@@ -1852,12 +1852,9 @@ handleenclavemsg(void)
  * 1. Decide to which peer.
  * 2. See if the peer is connected
  * 3. See if the peer has a current session that is alive
- *      If not, drop packet and ensure handshake
+ *      If not, queue packet and ensure handshake
  * Otherwise write a MSGWGDATA to the connected socket using the current
  * session.
- *
- * TODO implement queue instead of drop.
- *   send back icmp messages
  *
  * Return 0 on success, -1 on error.
  */
@@ -1956,6 +1953,8 @@ handletundmsg(void)
 		    msgsize - TUNHDRSIZ, p->scurr);
 	} else {
 		if (p->qpackets >= MAXQUEUEPACKETS) {
+			logwarnx("%s queue full %zu packets", __func__,
+			    p->qpackets);
 			stats.sockouterr++;
 			stats.queueinerr++;
 			return -1;
@@ -1963,12 +1962,15 @@ handletundmsg(void)
 
 		if ((MAXQUEUEPACKETSDATASZ - (msgsize - TUNHDRSIZ)) <
 		    p->qpacketsdatasz) {
+			logwarnx("%s queue full %zu bytes", __func__,
+			    p->qpacketsdatasz);
 			stats.sockouterr++;
 			stats.queueinerr++;
 			return -1;
 		}
 
 		if ((qp = malloc(sizeof(*qp))) == NULL) {
+			logwarnx("%s malloc failed %zu", __func__, sizeof(*qp));
 			stats.sockouterr++;
 			stats.queueinerr++;
 			return -1;
@@ -1977,6 +1979,8 @@ handletundmsg(void)
 		qp->datasize = msgsize - TUNHDRSIZ;
 
 		if ((qp->data = malloc(qp->datasize)) == NULL) {
+			logwarnx("%s malloc failed %zu", __func__,
+			    qp->datasize);
 			free(qp);
 			stats.sockouterr++;
 			stats.queueinerr++;
