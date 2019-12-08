@@ -38,8 +38,8 @@
 
 #include "util.h"
 
-#define MAXUID (1 << 16)
-#define MAXGID (1 << 16)
+#define MAXUID ((1 << 16) - 1)
+#define MAXGID ((1 << 16) - 1)
 
 extern int background, verbose;
 
