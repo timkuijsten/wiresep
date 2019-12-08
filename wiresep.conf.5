@@ -100,7 +100,8 @@ is not yet supported.
 .It Ic listen Ar ip:port Op ...
 The ip address and port on which to listen for encrypted incoming packets.
 Multiple address and port combinations may be configured.
-This setting is required.
+This setting is optional and determines whether to operate in server or
+client-only mode.
 .It Ic privkeyfile Ar file
 The name of a file that contains the private key for this interface.
 This setting is mandatory, but if it is not set explicitly it will implicitly

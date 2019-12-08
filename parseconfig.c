@@ -1047,10 +1047,6 @@ parseinterfaceconfigs(void)
 			warnx("interface device name missing");
 			e = 1;
 		}
-		if (ifn->listenaddrssize == 0) {
-			warnx("%s: listen missing", ifn->ifname);
-			e = 1;
-		}
 
 		if (memcmp(ifn->privkey, nullkey, sizeof(wskey)) == 0) {
 			warnx("%s: privkey missing", ifn->ifname);
@@ -1115,29 +1111,30 @@ parseinterfaceconfigs(void)
 
 		/*
 		 * TODO if a wildcard is used, resolve all addresses on all
-		 * interfaces
+		 * interfaces. For now just print a warning.
 		 */
-		wildcard = 0;
-		lport = 0;
-		if (ifn->listenaddrs[0]->ss_family == AF_INET6) {
-			sin6 = (struct sockaddr_in6 *)ifn->listenaddrs[0];
-			lport = ntohs(sin6->sin6_port);
-			wildcard = memcmp(&sin6->sin6_addr, &in6addr_any,
-			    sizeof(in6addr_any)) == 0;
-		} else if (ifn->listenaddrs[0]->ss_family == AF_INET) {
-			sin4 = (struct sockaddr_in *)ifn->listenaddrs[0];
-			lport = ntohs(sin4->sin_port);
-			if (sin4->sin_addr.s_addr == INADDR_ANY)
-				wildcard = 1;
-		} else {
-			errx(1, "unsupported protocol family %d",
-			    ifn->listenaddrs[0]->ss_family);
+		for (i = 0; i < ifn->listenaddrssize; i++) {
+			wildcard = 0;
+			lport = 0;
+			if (ifn->listenaddrs[i]->ss_family == AF_INET6) {
+				sin6 = (struct sockaddr_in6 *)ifn->listenaddrs[i];
+				lport = ntohs(sin6->sin6_port);
+				wildcard = memcmp(&sin6->sin6_addr,
+				    &in6addr_any, sizeof(in6addr_any)) == 0;
+			} else if (ifn->listenaddrs[i]->ss_family == AF_INET) {
+				sin4 = (struct sockaddr_in *)ifn->listenaddrs[i];
+				lport = ntohs(sin4->sin_port);
+				if (sin4->sin_addr.s_addr == INADDR_ANY)
+					wildcard = 1;
+			} else {
+				errx(1, "unsupported protocol family %d",
+				    ifn->listenaddrs[i]->ss_family);
+			}
+			if (wildcard && lport >= IPPORT_RESERVED)
+				warnx("using a wildcard address with a non-"
+				    "reserved port makes us vulnerable to a DoS"
+				    " by a local system user");
 		}
-
-		if (wildcard && lport >= IPPORT_RESERVED)
-			warnx("using a wildcard address with a non-reserved "
-			    "port makes us vulnerable to a DoS by a local "
-			    "system user");
 
 		/* unlink */
 		ifn->scfge = NULL;
