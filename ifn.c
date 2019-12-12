@@ -1491,8 +1491,8 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 		if (forward2tun(out, TUNHDRSIZ + payloadsize, peer) == -1)
 			return -1;
 	} else {
-		loginfox("%s unexpected keepalive at start of next sesssion",
-		    __func__);
+		loginfox("%s unexpected keepalive at start of next sesssion, "
+		    "payload size %zd", __func__, payloadsize);
 	}
 
 	/* 4. handlewgdatafrompeer part 2/2 */
