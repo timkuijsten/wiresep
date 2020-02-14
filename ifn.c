@@ -66,7 +66,7 @@
 #define TAGLEN 16
 #define DATAHEADERLEN 16
 
-#define MAXQUEUEPACKETS 1000
+#define MAXQUEUEPACKETS 50
 #define MAXQUEUEPACKETSDATASZ ((size_t)(MAXSCRATCH * MAXQUEUEPACKETS))
 #define MINDATA  (1 << 21) /* minimum dynamic memory without peers / packets */
 #define MAXSTACK (1 << 15) /* 32 KB should be enough */
