@@ -70,8 +70,10 @@ struct cfgifn {
 	char *ifdesc; /* nul terminated label for the interface */
 	struct cfgcidraddr **ifaddrs;
 	size_t ifaddrssize;
-	struct sockaddr_storage **listenaddrs;
-	size_t listenaddrssize;
+	struct sockaddr_in6 *laddrs6;
+	size_t laddrs6count;
+	struct sockaddr_in *laddrs4;
+	size_t laddrs4count;
 	char *pskfile;
 	char *privkeyfile;
 	wskey psk;

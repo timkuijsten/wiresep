@@ -36,6 +36,8 @@
 #include "parseconfig.h"
 
 #define B64KEYLEN 44
+#define MAXLISTEN6 40
+#define MAXLISTEN4 40
 
 /* global settings */
 static char *guser, *ggroup, *gpskfile;
@@ -700,14 +702,14 @@ parseinterfaceconfigs(void)
 	struct cfgifn *ifn;
 	struct cfgpeer *peer;
 	struct cfgcidraddr *ifaddr;
-	struct sockaddr_storage *listenaddr;
+	struct sockaddr_storage listenaddr;
+	struct sockaddr_in6 *laddrs6;
+	struct sockaddr_in *laddrs4;
 	struct stat st;
-	struct sockaddr_in6 *sin6;
-	struct sockaddr_in *sin4;
 	const char *key;
 	char tundevpath[29];
 	size_t i, j, n;
-	int e, rc, wildcard, lport, tunnum;
+	int e, rc, tunnum;
 
 	e = 0;
 	for (n = 0; n < ifnvsize; n++) {
@@ -909,16 +911,60 @@ parseinterfaceconfigs(void)
 					continue;
 				}
 				for (j = 1; j < subcfg->strvsize; j++) {
-					xaddone((void ***)&ifn->listenaddrs,
-					    &ifn->listenaddrssize,
-					    (void **)&listenaddr,
-					    sizeof(*listenaddr));
-
-					if (parseaddrport(listenaddr,
+					if (parseaddrport(&listenaddr,
 					    subcfg->strv[j]) == -1) {
 						warnx("%s: %s parse error: %s. Make "
 						    "sure the address and port are "
 						    "separated by a colon", ifn->ifname,
+						    key, subcfg->strv[j]);
+						e = 1;
+						continue;
+					}
+
+					if (listenaddr.ss_family == AF_INET6) {
+						laddrs6 = reallocarray(ifn->laddrs6,
+						    ifn->laddrs6count + 1,
+						    sizeof(struct sockaddr_in6));
+
+						if (laddrs6 == NULL) {
+							warn("%s: %s "
+							    "reallocarray error"
+							    " %s", ifn->ifname,
+							    key, subcfg->strv[j]);
+							e = 1;
+							continue;
+						}
+
+						memcpy(&laddrs6[ifn->laddrs6count],
+						    &listenaddr,
+						    sizeof(struct sockaddr_in6));
+
+						ifn->laddrs6 = laddrs6;
+						ifn->laddrs6count++;
+					} else if (listenaddr.ss_family == AF_INET) {
+						laddrs4 = reallocarray(ifn->laddrs4,
+						    ifn->laddrs4count + 1,
+						    sizeof(struct sockaddr_in));
+
+						if (laddrs4 == NULL) {
+							warn("%s: %s "
+							    "reallocarray error"
+							    " %s", ifn->ifname,
+							    key, subcfg->strv[j]);
+							e = 1;
+							continue;
+						}
+
+						memcpy(&laddrs4[ifn->laddrs4count],
+						    &listenaddr,
+						    sizeof(struct sockaddr_in));
+
+						ifn->laddrs4 = laddrs4;
+						ifn->laddrs4count++;
+					} else {
+						warn("%s: %s "
+						    "specify an IPv6 or IPv4 "
+						    "address %s", ifn->ifname,
 						    key, subcfg->strv[j]);
 						e = 1;
 						continue;
@@ -1103,6 +1149,13 @@ parseinterfaceconfigs(void)
 			}
 		}
 
+		if (ifn->laddrs6count > MAXLISTEN6 ||
+		    ifn->laddrs4count > MAXLISTEN4) {
+			warnx("%s: only %d v6 and %d v4 addressess may be "
+			    "configured", ifn->ifname, MAXLISTEN6, MAXLISTEN4);
+			e = 1;
+		}
+
 		if (ifn->peerssize == 0)
 			warnx("%s: has no peers configured", ifn->ifname);
 
@@ -1113,24 +1166,18 @@ parseinterfaceconfigs(void)
 		 * TODO if a wildcard is used, resolve all addresses on all
 		 * interfaces. For now just print a warning.
 		 */
-		for (i = 0; i < ifn->listenaddrssize; i++) {
-			wildcard = 0;
-			lport = 0;
-			if (ifn->listenaddrs[i]->ss_family == AF_INET6) {
-				sin6 = (struct sockaddr_in6 *)ifn->listenaddrs[i];
-				lport = ntohs(sin6->sin6_port);
-				wildcard = memcmp(&sin6->sin6_addr,
-				    &in6addr_any, sizeof(in6addr_any)) == 0;
-			} else if (ifn->listenaddrs[i]->ss_family == AF_INET) {
-				sin4 = (struct sockaddr_in *)ifn->listenaddrs[i];
-				lport = ntohs(sin4->sin_port);
-				if (sin4->sin_addr.s_addr == INADDR_ANY)
-					wildcard = 1;
-			} else {
-				errx(1, "unsupported protocol family %d",
-				    ifn->listenaddrs[i]->ss_family);
-			}
-			if (wildcard && lport >= IPPORT_RESERVED)
+		for (i = 0; i < ifn->laddrs6count; i++) {
+			if (memcmp(&ifn->laddrs6[i].sin6_addr,
+			    &in6addr_any, sizeof in6addr_any) == 0 &&
+			    ntohs(ifn->laddrs6[i].sin6_port) >= IPPORT_RESERVED)
+				warnx("using a wildcard address with a non-"
+				    "reserved port makes us vulnerable to a DoS"
+				    " by a local system user");
+		}
+
+		for (i = 0; i < ifn->laddrs4count; i++) {
+			if (ifn->laddrs4[i].sin_addr.s_addr == INADDR_ANY &&
+			    ntohs(ifn->laddrs4[i].sin_port) >= IPPORT_RESERVED)
 				warnx("using a wildcard address with a non-"
 				    "reserved port makes us vulnerable to a DoS"
 				    " by a local system user");
@@ -1472,7 +1519,6 @@ void
 sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
 {
 	struct cfgifn *ifn;
-	struct sockaddr_storage *listenaddr;
 	size_t m, n;
 
 	memset(&smsg.init, 0, sizeof(smsg.init));
@@ -1494,7 +1540,7 @@ sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
 
 		smsg.ifn.ifnid = n;
 		smsg.ifn.ifnport = ifn->proxwithifn;
-		smsg.ifn.nlistenaddrs = ifn->listenaddrssize;
+		smsg.ifn.nlistenaddrs = ifn->laddrs6count + ifn->laddrs4count;
 		snprintf(smsg.ifn.ifname, sizeof(smsg.ifn.ifname), "%s",
 		    ifn->ifname);
 		/* don't send interface description to proxy, no public keys in
@@ -1512,17 +1558,24 @@ sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
 			logexitx(1, "%s wire_sendmsg SIFN", __func__);
 
 		/* send listen addresses */
-		for (m = 0; m < ifn->listenaddrssize; m++) {
-			listenaddr = ifn->listenaddrs[m];
-
-			memset(&smsg.cidraddr, 0, sizeof(smsg.cidraddr));
-
+		for (m = 0; m < ifn->laddrs6count; m++) {
 			smsg.cidraddr.ifnid = n;
-			memcpy(&smsg.cidraddr.addr, listenaddr,
-			    sizeof(smsg.cidraddr.addr));
+			memcpy(&smsg.cidraddr.addr, &ifn->laddrs6[m],
+			    sizeof ifn->laddrs6[m]);
 
 			if (wire_sendmsg(mast2prox, SCIDRADDR, &smsg.cidraddr,
-			    sizeof(smsg.cidraddr)) == -1)
+			    sizeof smsg.cidraddr) == -1)
+				logexitx(1, "%s wire_sendmsg SCIDRADDR",
+				    __func__);
+		}
+
+		for (m = 0; m < ifn->laddrs4count; m++) {
+			smsg.cidraddr.ifnid = n;
+			memcpy(&smsg.cidraddr.addr, &ifn->laddrs4[m],
+			    sizeof ifn->laddrs4[m]);
+
+			if (wire_sendmsg(mast2prox, SCIDRADDR, &smsg.cidraddr,
+			    sizeof smsg.cidraddr) == -1)
 				logexitx(1, "%s wire_sendmsg SCIDRADDR",
 				    __func__);
 		}
@@ -1633,7 +1686,6 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 {
 	struct cfgcidraddr *allowedip;
 	struct cfgcidraddr *ifaddr;
-	struct sockaddr_storage *listenaddr;
 	struct cfgifn *ifn;
 	struct cfgpeer *peer;
 	size_t m, n;
@@ -1669,7 +1721,7 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 	memcpy(smsg.ifn.mac1key, ifn->mac1key, sizeof(smsg.ifn.mac1key));
 	memcpy(smsg.ifn.cookiekey, ifn->cookiekey, sizeof(smsg.ifn.cookiekey));
 	smsg.ifn.nifaddrs = ifn->ifaddrssize;
-	smsg.ifn.nlistenaddrs = ifn->listenaddrssize;
+	smsg.ifn.nlistenaddrs = ifn->laddrs6count + ifn->laddrs4count;
 	smsg.ifn.npeers = ifn->peerssize;
 
 	if (wire_sendmsg(ifn->mastwithifn, SIFN, &smsg.ifn, sizeof(smsg.ifn))
@@ -1694,17 +1746,24 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 	}
 
 	/* then listen addresses */
-	for (n = 0; n < ifn->listenaddrssize; n++) {
-		listenaddr = ifn->listenaddrs[n];
-
-		memset(&smsg.cidraddr, 0, sizeof(smsg.cidraddr));
-
+	for (n = 0; n < ifn->laddrs6count; n++) {
 		smsg.cidraddr.ifnid = ifnid;
-		memcpy(&smsg.cidraddr.addr, listenaddr,
-		    sizeof(smsg.cidraddr.addr));
+		memcpy(&smsg.cidraddr.addr, &ifn->laddrs6[n],
+		    sizeof ifn->laddrs6[n]);
 
 		if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
-		    sizeof(smsg.cidraddr)) == -1)
+		    sizeof smsg.cidraddr) == -1)
+			logexitx(1, "%s wire_sendmsg listen SCIDRADDR",
+			    __func__);
+	}
+
+	for (n = 0; n < ifn->laddrs4count; n++) {
+		smsg.cidraddr.ifnid = ifnid;
+		memcpy(&smsg.cidraddr.addr, &ifn->laddrs4[n],
+		    sizeof ifn->laddrs4[n]);
+
+		if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
+		    sizeof smsg.cidraddr) == -1)
 			logexitx(1, "%s wire_sendmsg listen SCIDRADDR",
 			    __func__);
 	}

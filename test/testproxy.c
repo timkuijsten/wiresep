@@ -70,7 +70,7 @@ static size_t recvencl, recvifn, recvifnsz;
 static int logstats, doterm;
 
 /*
- * Configure one interface with 8 peers.
+ * Configure one interface with several peers.
  *
  * tun3 pubkey ErOyQKEbYQx/nFSiCFY+lDCe/3LfJ/v8UiHFpnvpo3Q=
  */
@@ -215,7 +215,7 @@ testsetup(const struct cfgifn *ifn)
 {
 	size_t i;
 
-	if ((testsessmapv = calloc(ifn->peerssize, sizeof(*testsessmapv))) == NULL)
+	if ((testsessmapv = calloc(ifn->peerssize, sizeof *testsessmapv)) == NULL)
 		logexit(1, "calloc");
 	testsessmapvsize = ifn->peerssize;
 
@@ -225,14 +225,14 @@ testsetup(const struct cfgifn *ifn)
 		create_session(ifn, testsessmapv[i].peerid, testsessmapv[i].sessid);
 	}
 
-	if ((testsockmapv = calloc(ifn->listenaddrssize, sizeof(*testsockmapv)))
+	if ((testsockmapv = calloc(ifn->laddrs6count, sizeof *testsockmapv))
 	    == NULL)
 		logexit(1, "calloc");
-	testsockmapvsize = ifn->listenaddrssize;
+	testsockmapvsize = ifn->laddrs6count;
 
-	for (i = 0; i < ifn->listenaddrssize; i++) {
-		memcpy(&testsockmapv[i].ss, ifn->listenaddrs[i],
-		    sizeof(testsockmapv[i].ss));
+	for (i = 0; i < ifn->laddrs6count; i++) {
+		memcpy(&testsockmapv[i].ss, &ifn->laddrs6[i],
+		    sizeof ifn->laddrs6[i]);
 
 		testsockmapv[i].s = socket(testsockmapv[i].ss.ss_family, SOCK_DGRAM, 0);
 		if (testsockmapv[i].s == -1)
@@ -338,7 +338,7 @@ runcatcher(int ipc[2], int ifnwithprox, int enclwithprox)
 	ssize_t r;
 	size_t n;
 	int r2, queue;
-	uint8_t msg[1]; /* no need to retreive full packets */
+	uint8_t msg[MAXSCRATCH];
 	char c;
 
 	/* print stats on SIGUSR1 */
@@ -365,10 +365,13 @@ runcatcher(int ipc[2], int ifnwithprox, int enclwithprox)
 	if (kevent(queue, kev, 2, NULL, 0, NULL) == -1)
 		logexit(1, "kevent");
 
-	/* signal parent we're ready and start catching without waiting */
+	/*
+	 * Signal parent and proxy we're ready and start catching without
+	 * waiting.
+	 */
 	close(ipc[0]);
 	if (write(ipc[1], &c, 1) != 1)
-		logexit(1, "write ready error");
+		logexit(1, "write ready to master error");
 	close(ipc[1]);
 
 	/* simply read all messages from the proxy */
@@ -421,6 +424,7 @@ testproxy_init(int masterport)
 	char addrstr[MAXADDRSTR];
 	struct sockaddr_storage *listenaddr;
 	struct sigaction sa;
+	const int on = 1;
 	size_t i, m, n;
 	int s;
 	socklen_t len;
@@ -436,48 +440,50 @@ testproxy_init(int masterport)
 	sockmapvsize = 0;
 	i = 0;
 	for (n = 0; n < ifnvsize; n++) {
+		/* one IPC socket plus one for all listen addressses */
 		sockmapvsize += 1 + ifnv[n]->listenaddrssize;
 
 		sockmapv = reallocarray(sockmapv, sockmapvsize,
 		    sizeof(*sockmapv));
 		if (sockmapv == NULL)
-			logexit(1, "reallocarray sockmapv");
+			logexit(1, "%s reallocarray error sockmapv", __func__);
 
 		sockmapv[i] = malloc(sizeof(*sockmapv[i]));
 		if (sockmapv[i] == NULL)
-			logexit(1, "malloc sockmapv[i]");
+			logexit(1, "%s malloc sockmapv[i]", __func__);
 
 		sockmapv[i]->s = ifnv[n]->port;
 		sockmapv[i]->ifn = ifnv[n];
 		sockmapv[i]->listenaddr = NULL;
+
 		i++;
 
 		for (m = 0; m < ifnv[n]->listenaddrssize; m++) {
 			listenaddr = ifnv[n]->listenaddrs[m];
 			s = socket(listenaddr->ss_family, SOCK_DGRAM, 0);
 			if (s == -1)
-				logexit(1, "socket listenaddr");
+				logexit(1, "%s socket listenaddr", __func__);
+
+			if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on,
+			    sizeof on) == -1)
+				logexit(1, "setsockopt reuseaddr error");
+
+			len = MAXRECVBUF;
+			if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, &len,
+			    sizeof len) == -1)
+				logexit(1, "setsockopt rcvbuf error");
+
 			if (bind(s, (struct sockaddr *)listenaddr,
 			    listenaddr->ss_len) == -1) {
 				addrtostr(addrstr, sizeof(addrstr),
 				    (struct sockaddr *)listenaddr, 0);
-				logexit(1, "bind failed: %s", addrstr);
+				logexit(1, "%s bind failed: %s", __func__,
+				    addrstr);
 			}
-
-			len = MAXRECVBUF;
-			if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, &len,
-			    sizeof(len)) == -1)
-				logexit(1, "setsockopt");
-
-			if (len < MAXRECVBUF)
-				logexitx(1, "could not maximize receive buffer:"
-				    " %d", len);
-
-			loginfox("socket receive buffer: %d", len);
 
 			sockmapv[i] = malloc(sizeof(*sockmapv[i]));
 			if (sockmapv[i] == NULL)
-				logexit(1, "malloc sockmapv[i]");
+				logexit(1, "%s malloc sockmapv[i]", __func__);
 
 			sockmapv[i]->s = s;
 			sockmapv[i]->ifn = ifnv[n];
@@ -486,12 +492,11 @@ testproxy_init(int masterport)
 
 			addrtostr(addrstr, sizeof(addrstr),
 			    (struct sockaddr *)listenaddr, 0);
-			lognoticex("listening %s", addrstr);
+			lognoticex("%s listening %s", __func__, addrstr);
 		}
 	}
 
-	if (verbose > 1)
-		loginfox("server sockets created: ");
+	loginfox("%s server sockets created", __func__);
 
 	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
 	sa.sa_handler = handlesig;
