@@ -40,7 +40,7 @@ int addrtostr(char *, size_t, const struct sockaddr *, int);
 void printopenfds(FILE *, int);
 int data2file(const char *, const void *, size_t);
 ssize_t writen(int, const void *, size_t);
-in_port_t getport(const struct sockaddr_storage *);
+int getport(const struct sockaddr *);
 int resolveuser(uid_t *, gid_t *, const char *);
 int resolvegroup(gid_t *, const char *);
 int facilitystrtoint(int *, const char *);

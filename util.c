@@ -509,17 +509,18 @@ writen(int d, const void *buf, size_t bufsize)
 /*
  * Extract the port from a socket address in host byte order.
  *
- * Return the port on success, 0 on error.
+ * Return the port on success, -1 on error.
  */
-in_port_t
-getport(const struct sockaddr_storage *ss)
+int
+getport(const struct sockaddr *sa)
 {
-	if (ss->ss_family == AF_INET6) {
-		return ntohs(((struct sockaddr_in6 *)ss)->sin6_port);
-	} else if (ss->ss_family == AF_INET) {
-		return ntohs(((struct sockaddr_in *)ss)->sin_port);
-	} else
-		return 0;
+	if (sa->sa_family == AF_INET6) {
+		return ntohs(((struct sockaddr_in6 *)sa)->sin6_port);
+	} else if (sa->sa_family == AF_INET) {
+		return ntohs(((struct sockaddr_in *)sa)->sin_port);
+	} else {
+		return -1;
+	}
 }
 
 /*
