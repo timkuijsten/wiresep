@@ -198,16 +198,6 @@ again:
 		return -1;
 	}
 
-	/*
-	 * XXX make sure writev(2) on AF_UNIX SOCK_DGRAM never returns partially
-	 * written datagrams.
-	 * For now, make sure all bytes were written.
-	 */
-	while (iovlen--)
-		r -= iov[iovlen].iov_len;
-	if (r != 0)
-		return -1;
-
 	return 0;
 }
 
@@ -376,16 +366,6 @@ again:
 
 		return -1;
 	}
-
-	/*
-	 * XXX make sure writev(2) on AF_UNIX SOCK_DGRAM never returns partially
-	 * written datagrams.
-	 * For now, make sure all bytes were written.
-	 */
-	while (iovlen--)
-		r -= iov[iovlen].iov_len;
-	if (r != 0)
-		return -1;
 
 	return 0;
 }
