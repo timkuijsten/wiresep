@@ -25,7 +25,7 @@
 #define HASHLEN 32
 #define MAXSCRATCH 71680 /* 70 KB */
 #define MAXUDP6DATA (65575 - 40 - 8) /* max udp v6 (non-jumbo) payload */
-#define MAXRECVBUF (MAXUDP6DATA * 8)
+#define MAXRECVBUF (MAXUDP6DATA * 2)
 #define MAXPEERS 10000
 
 /* hash("Noise_IKpsk2_25519_ChaChaPoly_BLAKE2s") */
