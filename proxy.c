@@ -700,7 +700,8 @@ recvconfig(int masterport)
 		ifn->id = smsg.ifn.ifnid;
 		ifn->ifname = strdup(smsg.ifn.ifname);
 		ifn->port = smsg.ifn.ifnport;
-		ifn->listenaddrssize = smsg.ifn.nlistenaddrs;
+		ifn->listenaddrssize = smsg.ifn.laddr6count +
+		    smsg.ifn.laddr4count;
 		memcpy(ifn->mac1key, smsg.ifn.mac1key,
 		    sizeof(smsg.ifn.mac1key));
 		memcpy(ifn->cookiekey, smsg.ifn.cookiekey,
@@ -769,7 +770,7 @@ recvconfig(int masterport)
 				logexit(1, "%s malloc listenaddr", __func__);
 
 			memcpy(listenaddr, &smsg.cidraddr.addr,
-			    sizeof(smsg.cidraddr.addr));
+			    sizeof smsg.cidraddr.addr);
 
 			ifn->listenaddrs[m] = listenaddr;
 		}
@@ -802,8 +803,10 @@ proxy_init(int masterport)
 	struct sockaddr_storage *listenaddr;
 	struct sigaction sa;
 	size_t heapneeded, i, m, n, nrlistenaddrs, nrpeers, nrsessmaps;
+	const int on = 1;
 	int stdopen, s;
 	socklen_t len;
+	uint32_t ifnid;
 
 	recvconfig(masterport);
 
@@ -839,12 +842,13 @@ proxy_init(int masterport)
 	sockmapvsize = 0;
 	i = 0;
 	for (n = 0; n < ifnvsize; n++) {
+		/* one IPC socket plus one for all listen addressses */
 		sockmapvsize += 1 + ifnv[n]->listenaddrssize;
 
 		sockmapv = reallocarray(sockmapv, sockmapvsize,
 		    sizeof(*sockmapv));
 		if (sockmapv == NULL)
-			logexit(1, "%s reallocarray sockmapv", __func__);
+			logexit(1, "%s reallocarray error sockmapv", __func__);
 
 		sockmapv[i] = malloc(sizeof(*sockmapv[i]));
 		if (sockmapv[i] == NULL)
@@ -853,6 +857,18 @@ proxy_init(int masterport)
 		sockmapv[i]->s = ifnv[n]->port;
 		sockmapv[i]->ifn = ifnv[n];
 		sockmapv[i]->listenaddr = NULL;
+
+		/*
+		 * Before creating server sockets, wait for each ifn process to
+		 * send the signal that it has created its sockets.
+		 */
+		if (read(ifnv[n]->port, &ifnid, sizeof ifnid) == -1)
+			logexit(1, "read error proxy to ifn %zu", n);
+
+		if (ifnid != ifnv[n]->id)
+			logexit(1, "ifn sent unexpected id %zu, got %zu",
+			    ifnv[n]->id, ifnid);
+
 		i++;
 
 		for (m = 0; m < ifnv[n]->listenaddrssize; m++) {
@@ -860,6 +876,16 @@ proxy_init(int masterport)
 			s = socket(listenaddr->ss_family, SOCK_DGRAM, 0);
 			if (s == -1)
 				logexit(1, "%s socket listenaddr", __func__);
+
+			if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on,
+			    sizeof on) == -1)
+				logexit(1, "setsockopt reuseaddr error");
+
+			len = MAXRECVBUF;
+			if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, &len,
+			    sizeof len) == -1)
+				logexit(1, "setsockopt rcvbuf error");
+
 			if (bind(s, (struct sockaddr *)listenaddr,
 			    listenaddr->ss_len) == -1) {
 				addrtostr(addrstr, sizeof(addrstr),
@@ -867,17 +893,6 @@ proxy_init(int masterport)
 				logexit(1, "%s bind failed: %s", __func__,
 				    addrstr);
 			}
-
-			len = MAXRECVBUF;
-			if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, &len,
-			    sizeof(len)) == -1)
-				logexit(1, "%s setsockopt", __func__);
-
-			if (len < MAXRECVBUF)
-				logexitx(1, "%s could not maximize receive "
-				    "buffer: %d", __func__, len);
-
-			loginfox("%s socket receive buffer: %d", __func__, len);
 
 			sockmapv[i] = malloc(sizeof(*sockmapv[i]));
 			if (sockmapv[i] == NULL)

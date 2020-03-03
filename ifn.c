@@ -70,6 +70,7 @@
 #define MAXQUEUEPACKETSDATASZ ((size_t)(MAXSCRATCH * MAXQUEUEPACKETS))
 #define MINDATA  (1 << 21) /* minimum dynamic memory without peers / packets */
 #define MAXSTACK (1 << 15) /* 32 KB should be enough */
+#define MAXCONNRETRY 10
 
 #ifdef DEBUG
 #define MAXCORE MAXQUEUEPACKETSDATASZ
@@ -83,6 +84,21 @@
 typedef uint64_t utime_t;
 
 extern int background, verbose;
+
+union sockaddr_inet {
+	struct {
+		u_int8_t    len;
+		sa_family_t family;
+		in_port_t   port;
+	};
+	struct sockaddr_in6 src6;
+	struct sockaddr_in  src4;
+};
+
+union inet_addr {
+	struct in6_addr addr6;
+	struct in_addr  addr4;
+};
 
 /*
  * Used when we have data to send to a peer but no active current session. A
@@ -145,17 +161,20 @@ struct qpacket {
 	SIMPLEQ_ENTRY(qpacket) qpackets;
 };
 
+/*
+ * A connected socket plus its local port.
+ */
+struct portsock {
+	int s;	/* socket */
+	in_port_t p;	/* transport layer port in network byte order */
+};
+
 struct peer {
-	enum { UNCONNECTED, CONNECTED } state;
-	int s6bound;
-	int s4bound;
 	char *name;
 	uint32_t id; /* peer id */
-	int s4; /* inet socket */
-	int s6; /* inet6 socket */
 	int s; /* active socket */
+	int sockisv6;
 	size_t prefixlen;
-	struct sockaddr_storage lsa; /* local and foreign socket name */
 	struct sockaddr_storage fsa;
 	struct sesstent sesstent;
 	struct sessnext sessnext;
@@ -166,6 +185,10 @@ struct peer {
 	size_t qpacketsdatasz;
 	struct cidraddr **allowedips;
 	size_t allowedipssize;
+	struct portsock *portsock6;
+	size_t portsock6count;
+	struct portsock *portsock4;
+	size_t portsock4count;
 };
 
 struct ifn {
@@ -174,8 +197,10 @@ struct ifn {
 	char *ifdesc;
 	struct cidraddr **ifaddrs;
 	size_t ifaddrssize;
-	struct sockaddr_storage **listenaddrs;
-	size_t listenaddrssize;
+	struct sockaddr_in6 *laddr6; /* local IPv6 address to port mapping */
+	size_t laddr6count;
+	struct sockaddr_in *laddr4;  /* local IPv4 address to port mapping */
+	size_t laddr4count;
 	wskey mac1key;
 	wskey cookiekey;
 	struct peer **peers;
@@ -254,12 +279,7 @@ logpeerinfo(const struct peer *peer)
 	size_t n;
 
 	logwarnx("peer %u %s", peer->id, peer->name);
-	logwarnx("  state %d", peer->state);
-	logwarnx("  s6bound %d", peer->s6bound);
-	logwarnx("  s4bound %d", peer->s4bound);
-	if (addrtostr(addrstr, sizeof(addrstr), (struct sockaddr *)&peer->lsa,
-	    0) != -1)
-		logwarnx("  lsa %s", addrstr);
+	logwarnx("  sock %d", peer->s);
 
 	if (addrtostr(addrstr, sizeof(addrstr), (struct sockaddr *)&peer->fsa,
 	    0) != -1)
@@ -295,11 +315,17 @@ ifn_loginfo(void)
 		}
 	}
 
-
-	for (n = 0; n < ifn->listenaddrssize; n++) {
+	for (n = 0; n < ifn->laddr6count; n++) {
 		if (addrtostr(addrstr, sizeof(addrstr),
-		    (struct sockaddr *)&ifn->listenaddrs[n], 0) != -1) {
-			logwarnx("listenaddr %s", addrstr);
+		    (struct sockaddr *)&ifn->laddr6[n], 0) != -1) {
+			logwarnx("local ip6 %s", addrstr);
+		}
+	}
+
+	for (n = 0; n < ifn->laddr4count; n++) {
+		if (addrtostr(addrstr, sizeof(addrstr),
+		    (struct sockaddr *)&ifn->laddr4[n], 0) != -1) {
+			logwarnx("local ip4 %s", addrstr);
 		}
 	}
 
@@ -519,6 +545,35 @@ payloadoffset(uint8_t **payload, size_t *payloadsize,
 }
 
 /*
+ * Find a socket by port.
+ *
+ * Return the socket if found or -1 if not found.
+ *
+ * XXX logn
+ */
+static int
+findsockbyport(const struct peer *peer, in_port_t port, int isv6)
+{
+	struct portsock *psp;
+	size_t n, pspcount;
+
+	if (isv6) {
+		psp = peer->portsock6;
+		pspcount = peer->portsock6count;
+	} else {
+		psp = peer->portsock4;
+		pspcount = peer->portsock4count;
+	}
+
+	for (n = 0; n < pspcount; n++) {
+		if (psp[n].p == port)
+			return psp[n].s;
+	}
+
+	return -1;
+}
+
+/*
  * Find a peer by id. Return 1 if found and updates "p" to point to it. 0 if not
  * found and updates "p" to NULL.
  */
@@ -690,7 +745,6 @@ setsockaddr6(struct sockaddr_in6 *out, const struct in6_addr *addr,
 	}
 }
 
-
 /*
  * Fill in an IPv4 socket addresss structure.
  *
@@ -731,174 +785,312 @@ setsockaddr(struct sockaddr *out, const void *ip, int ipisv6, in_port_t port)
 }
 
 /*
- * Connect to remote peer "fsa" and verify our local socket is bound to "lsa".
- * "lsa" may contain the wildcard address but the port must be set (i.e. may not
- * be 0).
+ * Check which port should have be used for a given an address. The address must
+ * match while the porthint is only used to keep searching as long as only an
+ * address is matched.
  *
- * Return 0 on success, -1 on failure.
+ * "porthint" must be in network byte order.
  *
- * XXX can bind(2) only once and cannot create a new socket with SO_REUSEADDR
- * when using pledge. So bind once with the right port and hope connect(2) picks
- * the right local address, but notify if this is not the case.
+ * Return which port should have been used, or 0 if none found for the given
+ * address.
+ */
+static in_port_t
+addrtoport(const struct sockaddr *addr, int isv6, in_port_t porthint)
+{
+	const struct sockaddr_in6 *src6;
+	const struct sockaddr_in *src4;
+	struct sockaddr_in6 *laddr6;
+	struct sockaddr_in *laddr4;
+	size_t n;
+	int score, advport;
+
+	/*
+	 * Find the local address with best match:
+	 *   wildcard address match = 1
+	 *       if porthint is given and matches = 2
+	 *   exact address match = 3
+	 *       if porthint is given and matches = 4
+	 */
+
+	score = advport = 0;
+	if (isv6) {
+		src6 = (struct sockaddr_in6 *)addr;
+		for (n = 0; n < ifn->laddr6count; n++) {
+			laddr6 = &ifn->laddr6[n];
+			if (memcmp(&laddr6->sin6_addr, &in6addr_any,
+			    sizeof(in6addr_any)) == 0) {
+				/* wildcard address match */
+				if (score < 1) {
+					score = 1;
+					advport = laddr6->sin6_port;
+				}
+
+				if (score < 2) {
+					if (porthint > 0 &&
+					    porthint == laddr6->sin6_port) {
+						score = 2;
+						advport = laddr6->sin6_port;
+					}
+				}
+			} else if (memcmp(&laddr6->sin6_addr, &src6->sin6_addr,
+			    sizeof(src6->sin6_addr)) == 0) {
+				/* exact address match */
+				if (score < 3) {
+					score = 3;
+					advport = laddr6->sin6_port;
+				}
+
+				if (score < 4) {
+					if (porthint > 0 &&
+					    porthint == laddr6->sin6_port) {
+						score = 4;
+						advport = laddr6->sin6_port;
+					}
+				}
+			}
+		}
+	} else {
+		src4 = (struct sockaddr_in *)addr;
+		for (n = 0; n < ifn->laddr4count; n++) {
+			laddr4 = &ifn->laddr4[n];
+			if (laddr4->sin_addr.s_addr == INADDR_ANY) {
+				/* wildcard address match */
+				if (score < 1) {
+					score = 1;
+					advport = laddr4->sin_port;
+				}
+
+				if (score < 2) {
+					if (porthint > 0 &&
+					    porthint == laddr4->sin_port) {
+						score = 2;
+						advport = laddr4->sin_port;
+					}
+				}
+			} else if (laddr4->sin_addr.s_addr ==
+			    src4->sin_addr.s_addr) {
+				/* exact address match */
+				if (score < 3) {
+					score = 3;
+					advport = laddr4->sin_port;
+				}
+
+				if (score < 4) {
+					if (porthint > 0 &&
+					    porthint == laddr4->sin_port) {
+						score = 4;
+						advport = laddr4->sin_port;
+					}
+				}
+			}
+		}
+	}
+
+	return advport;
+}
+
+/*
+ * Disconnect and deregister the active socket of a peer by connecting it to a
+ * reserved port on the localhost so that it can be used later to connect to a
+ * new address, and stop listening for any events that might happen (triggered
+ * by a /rogue/ local process).
  *
- * XXX support updating the routing table to ensure the right local address..
+ * Return 0 on success, -1 on failure with errno set.
  */
 static int
-peerconnect(struct peer *p, const struct sockaddr_storage *lsa,
-    const struct sockaddr_storage *fsa)
+peerpark(struct peer *peer)
 {
 	char addrstr1[MAXADDRSTR], addrstr2[MAXADDRSTR];
-	static struct sockaddr_storage ss;
-	struct sockaddr_in6 *src6, *sin6;
-	struct sockaddr_in *src4, *sin4;
+	struct sockaddr_storage ss;
+	union inet_addr addr;
 	struct kevent ev;
-	int s;
+	int retries;
+	socklen_t len;
+	in_port_t rport;
+
+	if (peer->s == -1) {
+		errno = ENOTSOCK;
+		return -1;
+	}
+
+	/*
+	 * Stop listening for anything that might be sent to this
+	 * socket. If no read filter was set (yet) on a descriptor EBADF is
+	 * returned by kevent(), ignore this.
+	 */
+	EV_SET(&ev, peer->s, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+	if (kevent(kq, &ev, 1, NULL, 0, NULL) == -1 && errno != EBADF)
+		logwarn("%s kevent error", __func__);
+
+	if (peer->sockisv6) {
+		if (inet_pton(AF_INET6, "::1", &addr.addr6) != 1)
+			logwarn("inet_pton ::1");
+	} else {
+		if (inet_pton(AF_INET, "127.0.0.1", &addr.addr4) != 1)
+			logwarn("inet_pton 127.0.0.1");
+	}
+
+	retries = 0;
+retry:
+	rport = arc4random_uniform(IPPORT_RESERVED - 1) + 1;
+	setsockaddr((struct sockaddr *)&ss, &addr, peer->sockisv6, rport);
+
+	if (connect(peer->s, (struct sockaddr *)&ss, ss.ss_len) == -1) {
+		if (errno == EINTR)
+			goto retry;
+
+		if (errno == EADDRINUSE) {
+			if (retries < MAXCONNRETRY) {
+				lognoticex("%s can't connect to localhost port "
+				    "%d, retrying... (%d)", rport, retries + 1);
+
+				sleep(1);
+				retries++;
+				goto retry;
+			}
+
+			logwarn("%s can't connect to localhost port %d, giving "
+			    "up", rport);
+		}
+
+		peer->s = -1;
+		peer->sockisv6 = 0;
+
+		logwarn("%s %s error", peer->name, __func__);
+
+		return -1;
+	}
+
+	len = sizeof ss;
+	if (getsockname(peer->s, (struct sockaddr *)&ss, &len) == -1) {
+		logwarn("%s getsockname error", __func__);
+		peerpark(peer);
+		return -1;
+	}
+	addrtostr(addrstr1, sizeof(addrstr1), (struct sockaddr *)&ss, 0);
+
+	len = sizeof ss;
+	if (getpeername(peer->s, (struct sockaddr *)&ss, &len) == -1) {
+		logwarn("%s getsockname error", __func__);
+		peerpark(peer);
+		return -1;
+	}
+	addrtostr(addrstr2, sizeof(addrstr2), (struct sockaddr *)&ss, 0);
+
+	loginfox("parked %s -> %s", addrstr1, addrstr2);
+
+	peer->s = -1;
+	peer->sockisv6 = 0;
+
+	return 0;
+}
+
+/*
+ * Connect to remote address "faddr". Try to connect from a port that matches
+ * one of the configured local addresses. Since the decision for the local
+ * address depends on the routing table (and will always be an interfaces
+ * primary address, never an alias) our methods to control the outgoing address
+ * are limited and might not match the address that a peer would have choosen.
+ *
+ * Return 0 on success, -1 on failure.
+ */
+static int
+peerconnect(struct peer *peer, const struct sockaddr *faddr)
+{
+	char addrstr1[MAXADDRSTR], addrstr2[MAXADDRSTR];
+	struct kevent ev;
+	struct sockaddr_storage ss;
+	in_port_t lport, port;
+	int isv6, s;
 	socklen_t len;
 
-	if (fsa->ss_family != lsa->ss_family) {
-		errno = EAFNOSUPPORT;
-		logwarn("%s address family mismatch: %x %x", __func__,
-		    fsa->ss_family, lsa->ss_family);
+	/* ensure existing sockets are parked first */
+	if (peer->s > -1)
+		if (peerpark(peer) == -1)
+			return -1;
 
+	/*
+	 * Use the first socket (with whatever port) to connect to the remote.
+	 * See which address was choosen by the routing table and make sure we
+	 * should not connect from a different port (and socket) for the choosen
+	 * address.
+	 */
+
+	if (faddr->sa_family == AF_INET6) {
+		peer->s = peer->portsock6[0].s;
+		peer->sockisv6 = 1;
+		lport =  peer->portsock6[0].p;
+		isv6 = 1;
+	} else {
+		peer->s = peer->portsock4[0].s;
+		peer->sockisv6 = 0;
+		lport =  peer->portsock4[0].p;
+		isv6 = 0;
+	}
+
+	/*
+	 * Connect and listen for events (overwrites if already set).
+	 */
+
+	if (connect(peer->s, faddr, faddr->sa_len) == -1) {
+		logwarn("connect to remote endpoint failed");
 		return -1;
 	}
 
-	if (fsa->ss_family != AF_INET6 && fsa->ss_family != AF_INET) {
-		errno = EAFNOSUPPORT;
-		logwarn("%s remote address family not inet6 and not inet: %x",
-		    __func__, fsa->ss_family);
-
+	len = sizeof ss;
+	if (getsockname(peer->s, (struct sockaddr *)&ss, &len) == -1) {
+		logwarn("%s getsockname error", __func__);
+		peerpark(peer);
 		return -1;
 	}
 
-	/*
-	 * Determine socket and ensure our local port is bound. We can only bind
-	 * a socket once and can not create a new socket with SO_REUSEADDR set
-	 * because we're pledged. Don't use the wildcard address in bind because
-	 * the proxy might be using it, instead, bind with a localhost address
-	 * and connect(2). Then let the second (normal) connect reset the local
-	 * address (it can not reset the local port). Never disconnect after
-	 * being bound because that would open up a race condition and opens up
-	 * a DoS where this socket would pickup packets from other roaming peers
-	 * instead of the proxy process (although no content will leak since
-	 * this peer won't have the right session keys so packets are simply
-	 * dropped).
-	 */
+	port = addrtoport((struct sockaddr *)&ss, isv6, lport);
+	if (port != 0 && port != lport) {
+		loginfox("reconnect from the socket with the right port");
 
-	if (fsa->ss_family == AF_INET6) {
-		s = p->s6;
-		if (!p->s6bound) {
-			memcpy(&ss, lsa, lsa->ss_len);
-			src6 = (struct sockaddr_in6 *)&ss;
-			if (inet_pton(AF_INET6, "::1", &src6->sin6_addr) != 1)
-				logexitx(1, "inet_pton ::1");
-			if (bind(s, (struct sockaddr *)src6, src6->sin6_len)
-			    == -1)
-				logexit(1, "%s bind [::1]:%u", __func__,
-				    ntohs(src6->sin6_port));
+		if (peerpark(peer) == -1)
+			return -1;
 
-			if (connect(s, (struct sockaddr *)fsa, fsa->ss_len)
-			    == -1)
-				logexit(1, "%s bind/connect", __func__);
-			p->s6bound = 1;
-		}
-	} else {
-		s = p->s4;
-		if (!p->s4bound) {
-			memcpy(&ss, lsa, lsa->ss_len);
-			src4 = (struct sockaddr_in *)&ss;
-			if (inet_pton(AF_INET, "127.0.0.1", &src4->sin_addr)
-			    != 1)
-				logexitx(1, "inet_pton 127.0.0.1");
-			if (bind(s, (struct sockaddr *)src4, src4->sin_len)
-			    == -1)
-				logexit(1, "%s bind 127.0.0.1:%u", __func__,
-				    ntohs(src4->sin_port));
-
-			if (connect(s, (struct sockaddr *)fsa, fsa->ss_len)
-			    == -1)
-				logexit(1, "%s bind/connect", __func__);
-			p->s4bound = 1;
-		}
-	}
-
-	if (connect(s, (struct sockaddr *)fsa, fsa->ss_len) == -1)
-		logexit(1, "%s connect", __func__);
-
-	/*
-	 * Verify that the locally picked address and port match with what was
-	 * requested. Depends on routing table and whether or not we are
-	 * listening on more than one port per interface.
-	 */
-
-	len = sizeof(ss);
-	if (getpeername(s, (struct sockaddr *)&ss, &len) == -1)
-		logexit(1, "getpeername");
-	memmove(&p->fsa, &ss, sizeof(ss));
-
-	len = sizeof(ss);
-	if (getsockname(s, (struct sockaddr *)&ss, &len) == -1)
-		logexit(1, "getsockname");
-	memmove(&p->lsa, &ss, sizeof(ss));
-
-	if (verbose > -1) {
-		addrtostr(addrstr1, sizeof(addrstr1),
-		    (struct sockaddr *)&p->lsa, 0);
-		addrtostr(addrstr2, sizeof(addrstr2),
-		    (struct sockaddr *)&p->fsa, 0);
-
-		loginfox("connected %s -> %s", addrstr1, addrstr2);
-	}
-
-	if (p->lsa.ss_family == AF_INET6) {
-		src6 = (struct sockaddr_in6 *)lsa;
-		sin6 = (struct sockaddr_in6 *)&p->lsa;
-		if (src6->sin6_port != sin6->sin6_port) {
-			logwarnx("wrong local v6 port picked %u instead of %u",
-			    ntohs(src6->sin6_port), ntohs(sin6->sin6_port));
+		s = findsockbyport(peer, port, isv6);
+		if (s == -1) {
+			logwarnx("%s suggested socket for port %d not found",
+			    __func__, ntohs(port));
 			return -1;
 		}
 
-		if (memcmp(&src6->sin6_addr, &in6addr_any, sizeof(in6addr_any))
-		    != 0 && memcmp(&src6->sin6_addr, &sin6->sin6_addr,
-		    sizeof(src6->sin6_addr)) != 0) {
-			logwarnx("wrong local v6 address picked, please update "
-			    "routing table");
-		}
-	} else {
-		src4 = (struct sockaddr_in *)lsa;
-		sin4 = (struct sockaddr_in *)&p->lsa;
-		if (src4->sin_port != sin4->sin_port) {
-			if (verbose > -1)
-				logwarnx("wrong local v4 port picked %u instead"
-				    " of %u", ntohs(src4->sin_port),
-				    ntohs(sin4->sin_port));
+		if (connect(s, faddr, faddr->sa_len) == -1) {
+			logwarn("reconnect to remote endpoint failed");
 			return -1;
 		}
 
-		if (src4->sin_addr.s_addr != INADDR_ANY &&
-		    src4->sin_addr.s_addr != sin4->sin_addr.s_addr) {
-			if (verbose > -1)
-				logwarnx("wrong local v4 address picked, please"
-				    " update routing table");
-		}
+		peer->s = s;
+		peer->sockisv6 = isv6;
+	} else if (port == 0) {
+		logwarnx("could not find a suitable local port to connect to "
+		    "remote endpoint, using %d", ntohs(lport));
 	}
 
-	/*
-	 * Overwrite existing filters if the same socket is reconnected. But
-	 * keep filters open for both as a peer can be using both v4 and v6 at
-	 * the same time.
-	 */
+	len = sizeof ss;
+	if (getsockname(peer->s, (struct sockaddr *)&ss, &len) == -1) {
+		logwarn("%s getsockname error", __func__);
+		peerpark(peer);
+		return -1;
+	}
+	addrtostr(addrstr1, sizeof addrstr1, (struct sockaddr *)&ss, 0);
 
-	EV_SET(&ev, s, EVFILT_READ, EV_ADD, 0, 0, NULL);
+	len = sizeof ss;
+	if (getpeername(peer->s, (struct sockaddr *)&ss, &len) == -1) {
+		logwarn("%s getsockname error", __func__);
+		peerpark(peer);
+		return -1;
+	}
+	addrtostr(addrstr2, sizeof addrstr2, (struct sockaddr *)faddr, 0);
+
+	loginfox("connected %s -> %s", addrstr1, addrstr2);
+
+	EV_SET(&ev, peer->s, EVFILT_READ, EV_ADD, 0, 0, NULL);
 	if (kevent(kq, &ev, 1, NULL, 0, NULL) == -1)
-		logexit(1, "%s kevent", __func__);
-
-	p->s = s;
-	p->state = CONNECTED;
-
-	if (verbose > 1)
-		loginfox("%s connected", p->name);
+		logexit(1, "%s kevent error", __func__);
 
 	return 0;
 }
@@ -1745,7 +1937,7 @@ handleenclavemsg(void)
 		break;
 	case MSGCONNREQ:
 		mcr = (struct msgconnreq *)msg;
-		if (peerconnect(p, &mcr->lsa, &mcr->fsa) == -1) {
+		if (peerconnect(p, (struct sockaddr *)&mcr->fsa) == -1) {
 			stats.sockouterr++;
 			return -1;
 		}
@@ -1929,9 +2121,9 @@ handletundmsg(void)
 			logwarnx("invalid ipv4 packet");
 		ip4 = (struct ip *)&msg[TUNHDRSIZ];
 		if (!peerbyroute4(&p, &addr, &ip4->ip_dst)) {
-			if (verbose > 0)
-				lognoticex("no route to %s",
-				    inet_ntoa(ip4->ip_dst));
+			lognoticex("no route to %s", inet_ntoa(ip4->ip_dst));
+
+
 			errno = EHOSTUNREACH;
 			stats.devinerr++;
 			return -1;
@@ -1948,21 +2140,11 @@ handletundmsg(void)
 	if (verbose > 1)
 		loginfox("packet for %s", p->name);
 
-	if (p->state != CONNECTED) {
-		if (p->fsa.ss_family == AF_INET6 ||
-		    p->fsa.ss_family == AF_INET) {
-			/* TODO, is simply picking first listen address ok? */
-			if (peerconnect(p, ifn->listenaddrs[0], &p->fsa)
-			    == -1) {
-				stats.sockouterr++;
-				return -1;
-			}
-		} else {
-			errno = EDESTADDRREQ;
-			logwarn("peer endpoint unknown");
-			stats.sockouterr++;
-			return -1;
-		}
+	if (p->s == -1) {
+		errno = EDESTADDRREQ;
+		logwarn("peer not connected");
+		stats.sockouterr++;
+		return -1;
 	}
 
 	if (sessactive(p->scurr)) {
@@ -2077,9 +2259,8 @@ handlesocketmsg(struct peer *p)
 
 	rc = read(p->s, msg, sizeof(msg));
 	if (rc < 0) {
-		p->state = UNCONNECTED;
-
 		logwarn("%s read error", __func__);
+		peerpark(p);
 		return -1;
 	}
 
@@ -2245,7 +2426,7 @@ handleproxymsg(void)
 			return -1;
 		}
 
-		if (peerconnect(p, &lsa, &fsa) == -1) {
+		if (peerconnect(p, (struct sockaddr *)&fsa) == -1) {
 			stats.sockouterr++;
 			return -1;
 		}
@@ -2360,12 +2541,10 @@ sesshandletimeout(struct kevent *ev)
 void
 ifn_serv(void)
 {
-	char addrstr[MAXADDRSTR];
-	struct sockaddr_storage ss, *listenaddr;
 	struct peer *peer;
 	struct kevent *ev;
 	struct timespec ts;
-	size_t evsize, maxevsize, m, n;
+	size_t evsize, maxevsize, n;
 	int nev, i;
 
 	if ((kq = kqueue()) == -1)
@@ -2394,29 +2573,12 @@ ifn_serv(void)
 
 	/* Connect to peers with known end-points. */
 	for (n = 0; n < ifn->peerssize; n++) {
-		/* find source address to use for connect */
 		peer = ifn->peers[n];
-		for (listenaddr = NULL, m = 0; m < ifn->listenaddrssize &&
-		    listenaddr == NULL; m++) {
-			if (ifn->listenaddrs[m]->ss_family ==
-			    peer->fsa.ss_family)
-				listenaddr = ifn->listenaddrs[m];
-		}
-		if (listenaddr == NULL) {
-			addrtostr(addrstr, sizeof(addrstr),
-			    (struct sockaddr *)&peer->fsa, 1);
-			logwarnx("could not find a suitable source address to "
-			    "connect to peer %s", addrstr);
-			continue;
-		}
-
-		if (setsockaddr(&ss, NULL,
-		    listenaddr->ss_family == AF_INET6 ? 1 : 0,
-		    getport(listenaddr)) == -1)
-			logexitx(1, "setsockaddr error");
-
-		if (peerconnect(peer, &ss, &peer->fsa) == -1)
-			logexitx(1, "peerconnect");
+		if ((peer->fsa.ss_family == AF_INET6 ||
+		    peer->fsa.ss_family == AF_INET) &&
+		    peerconnect(peer, (struct sockaddr *)&peer->fsa) == -1)
+			logwarnx("peerconnect error when connecting to known "
+			    "endpoint");
 	}
 
 	for (;;) {
@@ -2560,67 +2722,107 @@ opentunnel(const char *ifname, const char *ifdesc, int setflags)
  * The caller should never free the allocated structure.
  */
 static struct peer *
-peernew(uint32_t id, const char *name)
+peernew(uint32_t id, const char *name, size_t nallowedips,
+    const struct sockaddr_storage *faddr)
 {
 	struct peer *peer;
-	const int on = 1;
-	int len;
 
 	if ((peer = malloc(sizeof(*peer))) == NULL)
 		logexit(1, "%s malloc peer", __func__);
 
 	peer->id = id;
 	peer->name = strdup(name);
-	peer->state = UNCONNECTED;
 	peer->s = -1;
-	peer->s6bound = 0;
-	peer->s4bound = 0;
+	peer->sockisv6 = 0;
+	peer->portsock6 = NULL;
+	peer->portsock4 = NULL;
+	peer->portsock6count = 0;
+	peer->portsock4count = 0;
 	peer->prefixlen = 0;
 	peer->qpackets = 0;
 	peer->qpacketsdatasz = 0;
 	SIMPLEQ_INIT(&peer->qpacketlist);
-	peer->allowedips = NULL;
-	peer->allowedipssize = 0;
-	memset(&peer->lsa, 0, sizeof(peer->lsa));
-	memset(&peer->fsa, 0, sizeof(peer->fsa));
+	peer->allowedipssize = nallowedips;
 
-	if ((peer->s6 = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0)) == -1)
-		logexit(1, "%s socket v6", __func__);
-	if (setsockopt(peer->s6, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on))
-	    == -1)
-		logexit(1, "setsockopt SO_REUSEADDR");
+	memcpy(&peer->fsa, faddr, sizeof(*faddr));
 
-	if ((peer->s4 = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0)) == -1)
-		logexit(1, "%s socket v4", __func__);
-	if (setsockopt(peer->s4, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on))
-	    == -1)
-		logexit(1, "setsockopt SO_REUSEADDR");
-
-	len = MAXRECVBUF;
-	if (setsockopt(peer->s6, SOL_SOCKET, SO_RCVBUF, &len, sizeof(len))
-	    == -1)
-		logexit(1, "setsockopt");
-
-	if (len < MAXRECVBUF)
-		logexitx(1, "could not maximize udp6 receive buffer: %d", len);
-
-	loginfox("peer udp6 receive buffer: %d", len);
-
-	len = MAXRECVBUF;
-	if (setsockopt(peer->s4, SOL_SOCKET, SO_RCVBUF, &len, sizeof(len))
-	    == -1)
-		logexit(1, "setsockopt");
-
-	if (len < MAXRECVBUF)
-		logexitx(1, "could not maximize udp4 receive buffer: %d", len);
-
-	loginfox("peer udp4 receive buffer: %d", len);
+	peer->allowedips = reallocarray(NULL, peer->allowedipssize,
+	    sizeof *peer->allowedips);
+	if (peer->allowedips == NULL)
+		logexit(1, "reallocarray peer->allowedips error");
 
 	sesstentclear(peer, 0);
 	sessnextclear(peer, 0);
 	peer->scurr = peer->sprev = NULL;
 
 	return peer;
+}
+
+/*
+ * Add a new portsock mapping to the peers array of port sock mappings.
+ *
+ * Creates new parked sockets with the local port set to "port". Unlike the
+ * local address, the local port of a socket can not change between multiple
+ * calls to connect(2). "port" must be in network byte order.
+ *
+ * Exit on failure.
+ */
+static void
+xaddportsock(struct peer *peer, in_port_t port, int isv6)
+{
+	union sockaddr_inet src;
+	const int on = 1;
+	struct sockaddr *sa;
+	struct portsock *ps;
+	socklen_t len;
+
+	if (isv6) {
+		peer->portsock6count += 1;
+		peer->portsock6 = reallocarray(peer->portsock6,
+		    peer->portsock6count, sizeof(struct portsock));
+		if (peer->portsock6 == NULL)
+			logexit(1, "reallocarray of a new portsock failed");
+
+		ps = &peer->portsock6[peer->portsock6count - 1];
+		ps->p = port;
+		ps->s = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+		if (ps->s == -1)
+			logexit(1, "%s socket error", __func__);
+
+		sa = (struct sockaddr *)&src.src6;
+	} else {
+		peer->portsock4count += 1;
+		peer->portsock4 = reallocarray(peer->portsock4,
+		    peer->portsock4count, sizeof(struct portsock));
+		if (peer->portsock4 == NULL)
+			logexit(1, "reallocarray of a new portsock failed");
+
+		ps = &peer->portsock4[peer->portsock4count - 1];
+		ps->p = port;
+		ps->s = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+		if (ps->s == -1)
+			logexit(1, "%s socket error", __func__);
+
+		sa = (struct sockaddr *)&src.src4;
+	}
+
+	setsockaddr(sa, NULL, isv6, port);
+
+	if (setsockopt(ps->s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on) == -1)
+		logexit(1, "setsockopt reuseaddr error");
+
+	len = MAXRECVBUF;
+	if (setsockopt(ps->s, SOL_SOCKET, SO_RCVBUF, &len, sizeof len) == -1)
+		logexit(1, "setsockopt rcvbuf error");
+
+	if (bind(ps->s, sa, sa->sa_len) == -1)
+		logexit(1, "%s bind on port %u failed", __func__, ntohs(port));
+
+	/* activate so we can park the socket */
+	peer->s = ps->s;
+	peer->sockisv6 = isv6;
+	if (peerpark(peer) == -1)
+		logexit(1, "%s peerpark failed", __func__);
 }
 
 /*
@@ -2637,6 +2839,7 @@ static void
 recvconfig(int masterport)
 {
 	char addrstr[MAXADDRSTR];
+	union inet_addr inet_addr;
 	static union {
 		struct sinit init;
 		struct sifn ifn;
@@ -2647,9 +2850,8 @@ recvconfig(int masterport)
 	struct cidraddr *ifaddr, *allowedip, *addr;
 	struct sockaddr_in *sin;
 	struct sockaddr_in6 *sin6;
-	struct sockaddr_storage *listenaddr;
 	struct peer *peer, *peer2;
-	size_t m, msgsize, n;
+	size_t m, msgsize, n, i;
 	unsigned char mtcode;
 	char addrp[INET6_ADDRSTRLEN];
 
@@ -2684,20 +2886,26 @@ recvconfig(int masterport)
 		ifn->ifdesc = NULL;
 
 	ifn->ifaddrssize = smsg.ifn.nifaddrs;
-	ifn->listenaddrssize = smsg.ifn.nlistenaddrs;
+	ifn->laddr6count = smsg.ifn.laddr6count;
+	ifn->laddr4count = smsg.ifn.laddr4count;
 	memcpy(ifn->mac1key, smsg.ifn.mac1key, sizeof(smsg.ifn.mac1key));
 	memcpy(ifn->cookiekey, smsg.ifn.cookiekey, sizeof(smsg.ifn.cookiekey));
 
-	if ((ifn->ifaddrs = calloc(ifn->ifaddrssize, sizeof(*ifn->ifaddrs)))
-	    == NULL)
+	ifn->ifaddrs = calloc(ifn->ifaddrssize, sizeof *ifn->ifaddrs);
+	if (ifn->ifaddrs == NULL)
 		logexit(1, "calloc ifn->ifaddrs");
 
-	if ((ifn->listenaddrs = calloc(ifn->listenaddrssize,
-	    sizeof(*ifn->listenaddrs))) == NULL)
-		logexit(1, "calloc ifn->listenaddrs");
-
-	if ((ifn->peers = calloc(ifn->peerssize, sizeof(*ifn->peers))) == NULL)
+	ifn->peers = calloc(ifn->peerssize, sizeof *ifn->peers);
+	if (ifn->peers == NULL)
 		logexit(1, "calloc ifn->peers");
+
+	ifn->laddr6 = calloc(ifn->laddr6count, sizeof *ifn->laddr6);
+	if (ifn->laddr6 == NULL)
+		logexit(1, "calloc ifn->laddr6");
+
+	ifn->laddr4 = calloc(ifn->laddr4count, sizeof *ifn->laddr4);
+	if (ifn->laddr4 == NULL)
+		logexit(1, "calloc ifn->laddr4");
 
 	/* first receive all interface addresses */
 	for (n = 0; n < ifn->ifaddrssize; n++) {
@@ -2714,7 +2922,7 @@ recvconfig(int masterport)
 
 		ifaddr->prefixlen = smsg.cidraddr.prefixlen;
 		memcpy(&ifaddr->addr, &smsg.cidraddr.addr,
-		    sizeof(smsg.cidraddr.addr));
+		    sizeof smsg.cidraddr.addr);
 
 		ifn->ifaddrs[n] = ifaddr;
 
@@ -2748,8 +2956,8 @@ recvconfig(int masterport)
 		}
 	}
 
-	/* then receive all listen addresses */
-	for (n = 0; n < ifn->listenaddrssize; n++) {
+	/* then receive all listen addresses, first v6, then v4 */
+	for (n = 0; n < ifn->laddr6count; n++) {
 		msgsize = sizeof(smsg);
 		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
 			logexitx(1, "wire_recvmsg SCIDRADDR");
@@ -2758,22 +2966,49 @@ recvconfig(int masterport)
 
 		assert(smsg.cidraddr.ifnid == ifn->id);
 
-		if (getport(&smsg.cidraddr.addr) == 0) {
-			if (verbose > -1) {
-				addrtostr(addrstr, sizeof(addrstr),
-				    (struct sockaddr *)&smsg.cidraddr.addr, 1);
-				logwarnx("listenaddr without port %s", addrstr);
-			}
-			continue;
-		}
+		memcpy(&ifn->laddr6[n], &smsg.cidraddr.addr,
+		    sizeof smsg.cidraddr.addr);
+	}
 
-		if ((listenaddr = malloc(sizeof(*listenaddr))) == NULL)
-			logexit(1, "malloc listenaddr");
+	for (n = 0; n < ifn->laddr4count; n++) {
+		msgsize = sizeof(smsg);
+		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
+			logexitx(1, "wire_recvmsg SCIDRADDR");
+		if (mtcode != SCIDRADDR)
+			logexitx(1, "mtcode SCIDRADDR");
 
-		memcpy(listenaddr, &smsg.cidraddr.addr,
-		    sizeof(smsg.cidraddr.addr));
+		assert(smsg.cidraddr.ifnid == ifn->id);
 
-		ifn->listenaddrs[n] = listenaddr;
+		/* TODO check for dupes */
+		memcpy(&ifn->laddr4[n], &smsg.cidraddr.addr,
+		    sizeof smsg.cidraddr.addr);
+	}
+
+	/* ensure at least one local address */
+
+	if (ifn->laddr6count == 0) {
+		ifn->laddr6 = malloc(sizeof *ifn->laddr6);
+		if (ifn->laddr6 == NULL)
+			logexit(1, "malloc error ifn->laddr6");
+		ifn->laddr6count = 1;
+
+		if (inet_pton(AF_INET6, "::1", &inet_addr.addr6) != 1)
+			logexit(1, "inet_pton error ::1");
+
+		setsockaddr((struct sockaddr *)ifn->laddr6, &inet_addr, 1, 0);
+	}
+
+	if (ifn->laddr4count == 0) {
+		ifn->laddr4 = malloc(sizeof *ifn->laddr4);
+		if (ifn->laddr4 == NULL)
+			logexit(1, "malloc error ifn->laddr4");
+		ifn->laddr4count = 1;
+
+		if (inet_pton(AF_INET, "127.0.0.1", &inet_addr.addr4)
+		    != 1)
+			logexit(1, "inet_pton 127.0.0.1");
+
+		setsockaddr((struct sockaddr *)ifn->laddr4, &inet_addr, 0, 0);
 	}
 
 	/* then receive peers */
@@ -2786,15 +3021,9 @@ recvconfig(int masterport)
 
 		assert(smsg.peer.peerid == m);
 
-		if ((peer = peernew(m, smsg.peer.name)) == NULL)
+		if ((peer = peernew(m, smsg.peer.name, smsg.peer.nallowedips,
+		    &smsg.peer.fsa)) == NULL)
 			logexit(1, "peernew %zu", m);
-
-		peer->allowedipssize = smsg.peer.nallowedips;
-		if ((peer->allowedips = calloc(peer->allowedipssize,
-		    sizeof(*peer->allowedips))) == NULL)
-			logexit(1, "calloc peer->allowedips");
-
-		memcpy(&peer->fsa, &smsg.peer.fsa, sizeof(smsg.peer.fsa));
 
 		ifn->peers[m] = peer;
 
@@ -2812,7 +3041,7 @@ recvconfig(int masterport)
 
 			allowedip->prefixlen = smsg.cidraddr.prefixlen;
 			memcpy(&allowedip->addr, &smsg.cidraddr.addr,
-			    sizeof(smsg.cidraddr.addr));
+			    sizeof smsg.cidraddr.addr);
 
 			peer->allowedips[n] = allowedip;
 
@@ -2849,6 +3078,36 @@ recvconfig(int masterport)
 			if (verbose > 1)
 				loginfox("%s allowedip %s/%zu", peer->name,
 				    addrp, allowedip->prefixlen);
+		}
+
+		/*
+		 * Create one socket per listen port/family combination.
+		 */
+
+		for (n = 0; n < ifn->laddr6count; n++) {
+			for (i = 0; i < peer->portsock6count; i++) {
+				if (ifn->laddr6[n].sin6_port ==
+				    peer->portsock6[i].p)
+					break;
+			}
+
+			if (i < peer->portsock6count)
+				continue; /* port already allocated */
+
+			xaddportsock(peer, ifn->laddr6[n].sin6_port, 1);
+		}
+
+		for (n = 0; n < ifn->laddr4count; n++) {
+			for (i = 0; i < peer->portsock4count; i++) {
+				if (ifn->laddr4[n].sin_port ==
+				    peer->portsock4[i].p)
+					break;
+			}
+
+			if (i < peer->portsock4count)
+				continue; /* port already allocated */
+
+			xaddportsock(peer, ifn->laddr4[n].sin_port, 0);
 		}
 	}
 
@@ -2899,8 +3158,7 @@ void
 ifn_init(int masterport)
 {
 	struct sigaction sa;
-	size_t heapneeded, n;
-	int stdopen;
+	size_t heapneeded, n, fdcount;
 
 	recvconfig(masterport);
 
@@ -2911,7 +3169,7 @@ ifn_init(int masterport)
 	 * there is no descriptor leak.
 	 */
 
-	stdopen = isopenfd(STDIN_FILENO) + isopenfd(STDOUT_FILENO) +
+	fdcount = isopenfd(STDIN_FILENO) + isopenfd(STDOUT_FILENO) +
 	    isopenfd(STDERR_FILENO);
 
 	if (!isopenfd(masterport))
@@ -2921,15 +3179,16 @@ ifn_init(int masterport)
 	if (!isopenfd(pport))
 		logexitx(1, "pport %d", pport);
 
+	fdcount += 3;
+
 	for (n = 0; n < ifn->peerssize; n++) {
-		if (!isopenfd(ifn->peers[n]->s4))
-			logexitx(1, "peer %zu s4", n);
-		if (!isopenfd(ifn->peers[n]->s6))
-			logexitx(1, "peer %zu s6", n);
+		fdcount += ifn->peers[n]->portsock6count;
+		fdcount += ifn->peers[n]->portsock4count;
 	}
 
-	if ((size_t)getdtablecount() != stdopen + 3 + ifn->peerssize * 2)
-		logexitx(1, "descriptor mismatch: %d", getdtablecount());
+	if ((size_t)getdtablecount() != fdcount)
+		logexitx(1, "descriptor mismatch: %d %d", getdtablecount(),
+		    fdcount);
 
 	aead = EVP_aead_chacha20_poly1305();
 	assert(EVP_AEAD_nonce_length(aead) == sizeof(nonce));
@@ -2964,10 +3223,15 @@ ifn_init(int masterport)
 	heapneeded += ifn->peerssize * 8;
 	heapneeded += ifn->ifaddrssize * sizeof(struct cidraddr);
 	heapneeded += ifn->ifaddrssize * 8;
-	heapneeded += ifn->listenaddrssize * sizeof(struct sockaddr_storage);
-	heapneeded += ifn->listenaddrssize * 8;
+	heapneeded += ifn->laddr6count * sizeof *ifn->laddr6;
+	heapneeded += ifn->laddr4count * sizeof *ifn->laddr4;
 	heapneeded += sizeof(struct ifn);
 	heapneeded += (ifn->peerssize + 10) * sizeof(struct kevent);
+
+	for (n = 0; n < ifn->peerssize; n++) {
+		heapneeded += ifn->peers[n]->portsock6count * sizeof(struct portsock);
+		heapneeded += ifn->peers[n]->portsock4count * sizeof(struct portsock);
+	}
 
 	if (ensurelimit(RLIMIT_DATA, heapneeded) == -1)
 		logexit(1, "ensurelimit data");
@@ -3007,4 +3271,8 @@ ifn_init(int masterport)
 
 	if (pledge("stdio inet", "") == -1)
 		logexit(1, "pledge");
+
+	/* let proxy know we have connected all sockets */
+	if (write(pport, &ifn->id, sizeof ifn->id) == -1)
+		logexit(1, "write error ifn %u to proxy", ifn->id);
 }

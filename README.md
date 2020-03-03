@@ -80,9 +80,14 @@ The design documents can be found in the [doc](doc/) directory.
 
 ## Todo
 
-* Better support multi-homed systems (currently have to manually change
-  the routing table if another source address was chosen by the kernel)
 * WireGuard Cookie support
+
+## Known issues
+
+* Interface aliases are not supported for outbound connections. In order to
+  properly support local address selection without having to rely on an
+  unpledged superuser process a new system call that would combine bind(2) and
+  connect(2) would be required.
 
 ## License
 

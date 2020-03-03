@@ -115,8 +115,9 @@ struct sifn {
 	wskey mac1key;
 	wskey cookiekey;
 	size_t nifaddrs;
-	size_t nlistenaddrs;
 	size_t npeers;
+	size_t laddr6count;
+	size_t laddr4count;
 };
 
 /* SPEER */

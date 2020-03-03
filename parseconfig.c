@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2019 Tim Kuijsten
+ * Copyright (c) 2018, 2019, 2020 Tim Kuijsten
  *
  * Permission to use, copy, modify, and distribute this software for any purpose
  * with or without fee is hereby granted, provided that the above copyright
@@ -1540,7 +1540,8 @@ sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
 
 		smsg.ifn.ifnid = n;
 		smsg.ifn.ifnport = ifn->proxwithifn;
-		smsg.ifn.nlistenaddrs = ifn->laddrs6count + ifn->laddrs4count;
+		smsg.ifn.laddr6count = ifn->laddrs6count;
+		smsg.ifn.laddr4count = ifn->laddrs4count;
 		snprintf(smsg.ifn.ifname, sizeof(smsg.ifn.ifname), "%s",
 		    ifn->ifname);
 		/* don't send interface description to proxy, no public keys in
@@ -1559,6 +1560,7 @@ sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
 
 		/* send listen addresses */
 		for (m = 0; m < ifn->laddrs6count; m++) {
+			memset(&smsg.cidraddr, 0, sizeof smsg.cidraddr);
 			smsg.cidraddr.ifnid = n;
 			memcpy(&smsg.cidraddr.addr, &ifn->laddrs6[m],
 			    sizeof ifn->laddrs6[m]);
@@ -1570,6 +1572,7 @@ sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
 		}
 
 		for (m = 0; m < ifn->laddrs4count; m++) {
+			memset(&smsg.cidraddr, 0, sizeof smsg.cidraddr);
 			smsg.cidraddr.ifnid = n;
 			memcpy(&smsg.cidraddr.addr, &ifn->laddrs4[m],
 			    sizeof ifn->laddrs4[m]);
@@ -1721,7 +1724,8 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 	memcpy(smsg.ifn.mac1key, ifn->mac1key, sizeof(smsg.ifn.mac1key));
 	memcpy(smsg.ifn.cookiekey, ifn->cookiekey, sizeof(smsg.ifn.cookiekey));
 	smsg.ifn.nifaddrs = ifn->ifaddrssize;
-	smsg.ifn.nlistenaddrs = ifn->laddrs6count + ifn->laddrs4count;
+	smsg.ifn.laddr6count = ifn->laddrs6count;
+	smsg.ifn.laddr4count = ifn->laddrs4count;
 	smsg.ifn.npeers = ifn->peerssize;
 
 	if (wire_sendmsg(ifn->mastwithifn, SIFN, &smsg.ifn, sizeof(smsg.ifn))
@@ -1747,25 +1751,29 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 
 	/* then listen addresses */
 	for (n = 0; n < ifn->laddrs6count; n++) {
+		memset(&smsg.cidraddr, 0, sizeof smsg.cidraddr);
+
 		smsg.cidraddr.ifnid = ifnid;
 		memcpy(&smsg.cidraddr.addr, &ifn->laddrs6[n],
 		    sizeof ifn->laddrs6[n]);
 
 		if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
 		    sizeof smsg.cidraddr) == -1)
-			logexitx(1, "%s wire_sendmsg listen SCIDRADDR",
-			    __func__);
+			logexitx(1, "%s wire_sendmsg local addr %d out of %zu",
+			    __func__, n, ifn->laddrs6count);
 	}
 
 	for (n = 0; n < ifn->laddrs4count; n++) {
+		memset(&smsg.cidraddr, 0, sizeof smsg.cidraddr);
+
 		smsg.cidraddr.ifnid = ifnid;
 		memcpy(&smsg.cidraddr.addr, &ifn->laddrs4[n],
 		    sizeof ifn->laddrs4[n]);
 
 		if (wire_sendmsg(ifn->mastwithifn, SCIDRADDR, &smsg.cidraddr,
 		    sizeof smsg.cidraddr) == -1)
-			logexitx(1, "%s wire_sendmsg listen SCIDRADDR",
-			    __func__);
+			logexitx(1, "%s wire_sendmsg local addr %d SCIDRADDR",
+			    __func__, n);
 	}
 
 	/* at last send the peers */
