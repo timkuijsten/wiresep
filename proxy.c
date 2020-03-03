@@ -894,8 +894,7 @@ proxy_init(int masterport)
 		}
 	}
 
-	if (verbose > 1)
-		loginfox("%s server sockets created: ", __func__);
+	loginfox("%s server sockets created", __func__);
 
 	/*
 	 * Calculate roughly the amount of dynamic memory we need.
