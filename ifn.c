@@ -670,47 +670,64 @@ peerbyroute4(struct peer **peer, struct cidraddr **addr,
 }
 
 /*
- * Fill a socket address structure.
+ * Fill in an IPv6 socket addresss structure.
  *
- * "out" must be allocated by the caller
- * "family" must be AF_INET6 or AF_INET
- * "ip" must be an struct in6_addr *, or struct in_addr *, depending on family
- * if "ip" is NULL, it will be set to the wildcard address.
- * "port" may be any port
+ * "port" must be in network byte order. If "addr" is NULL the wildcard address
+ * is used. If "port" is 0 the wildcard port is used.
  */
-static int
-setsockaddr(struct sockaddr_storage *out, int family, void *ip, in_port_t port)
+static void
+setsockaddr6(struct sockaddr_in6 *out, const struct in6_addr *addr,
+    in_port_t port)
 {
-	struct sockaddr_in6 *sin6;
-	struct sockaddr_in *sin4;
-
-	if (family == AF_INET6) {
-		sin6 = (struct sockaddr_in6 *)out;
-		memset(sin6, 0, sizeof(*sin6));
-		sin6->sin6_len = sizeof(*sin6);
-		sin6->sin6_family = family;
-		sin6->sin6_port = htons(port);
-		if (ip == NULL) {
-			sin6->sin6_addr = in6addr_any;
-		} else {
-			sin6->sin6_addr = *(struct in6_addr *)ip;
-		}
-	} else if (family == AF_INET) {
-		sin4 = (struct sockaddr_in *)out;
-		memset(sin4, 0, sizeof(*sin4));
-		sin4->sin_len = sizeof(*sin4);
-		sin4->sin_family = family;
-		sin4->sin_port = htons(port);
-		if (ip == NULL) {
-			sin4->sin_addr.s_addr = INADDR_ANY;
-		} else {
-			sin4->sin_addr = *(struct in_addr *)ip;
-		}
+	memset(out, 0, sizeof(*out));
+	out->sin6_len = sizeof(*out);
+	out->sin6_family = AF_INET6;
+	out->sin6_port = port;
+	if (addr == NULL) {
+		out->sin6_addr = in6addr_any;
 	} else {
-		return -1;
+		out->sin6_addr = *(struct in6_addr *)addr;
 	}
+}
 
-	return 0;
+
+/*
+ * Fill in an IPv4 socket addresss structure.
+ *
+ * "port" must be in network byte order. If "addr" is NULL the wildcard address
+ * is used. If "port" is 0 the wildcard port is used.
+ */
+static void
+setsockaddr4(struct sockaddr_in *out, const struct in_addr *addr,
+    in_port_t port)
+{
+	memset(out, 0, sizeof(*out));
+	out->sin_len = sizeof(*out);
+	out->sin_family = AF_INET;
+	out->sin_port = port;
+	if (addr == NULL) {
+		out->sin_addr.s_addr = INADDR_ANY;
+	} else {
+		out->sin_addr = *(struct in_addr *)addr;
+	}
+}
+
+/*
+ * Fill in a socket address structure.
+ *
+ * "ip" must be an in6_addr or in_addr structure, and "ipisv6" a boolean to
+ * indicate which one of the two. "port" must be in network byte order. If "ip"
+ * is NULL the wildcard address is used. If "port" is 0 the wildcard port is
+ * used.
+ */
+static void
+setsockaddr(struct sockaddr *out, const void *ip, int ipisv6, in_port_t port)
+{
+	if (ipisv6) {
+		setsockaddr6((struct sockaddr_in6 *)out, ip, port);
+	} else {
+		setsockaddr4((struct sockaddr_in *)out, ip, port);
+	}
 }
 
 /*
@@ -2393,9 +2410,10 @@ ifn_serv(void)
 			continue;
 		}
 
-		if (setsockaddr(&ss, listenaddr->ss_family, NULL,
+		if (setsockaddr(&ss, NULL,
+		    listenaddr->ss_family == AF_INET6 ? 1 : 0,
 		    getport(listenaddr)) == -1)
-			logexitx(1, "setsockaddr");
+			logexitx(1, "setsockaddr error");
 
 		if (peerconnect(peer, &ss, &peer->fsa) == -1)
 			logexitx(1, "peerconnect");
