@@ -85,16 +85,6 @@ typedef uint64_t utime_t;
 
 extern int background, verbose;
 
-union sockaddr_inet {
-	struct {
-		u_int8_t    len;
-		sa_family_t family;
-		in_port_t   port;
-	};
-	struct sockaddr_in6 src6;
-	struct sockaddr_in  src4;
-};
-
 union inet_addr {
 	struct in6_addr addr6;
 	struct in_addr  addr4;
@@ -146,7 +136,7 @@ struct session {
 };
 
 struct cidraddr {
-	struct sockaddr_storage addr;
+	union sockaddr_inet addr;
 	in_addr_t v4addrmasked;
 	uint32_t v4mask;
 	struct in6_addr v6addrmasked;
@@ -175,7 +165,7 @@ struct peer {
 	int s; /* active socket */
 	int sockisv6;
 	size_t prefixlen;
-	struct sockaddr_storage fsa;
+	union sockaddr_inet fsa;
 	struct sesstent sesstent;
 	struct sessnext sessnext;
 	struct session *scurr;
@@ -460,9 +450,9 @@ assignaddr(const char *ifname, const struct cidraddr *ca)
 		return -1;
 	}
 
-	if (ca->addr.ss_family == AF_INET6) {
+	if (ca->addr.family == AF_INET6) {
 		rc = assignaddr6(ifname, ca);
-	} else if (ca->addr.ss_family == AF_INET) {
+	} else if (ca->addr.family == AF_INET) {
 		rc = assignaddr4(ifname, ca);
 	} else {
 		errno = EINVAL;
@@ -651,7 +641,7 @@ peerbyroute6(struct peer **peer, struct cidraddr **addr,
 		for (o = 0; o < p->allowedipssize; o++) {
 			allowedip = p->allowedips[o];
 
-			if (allowedip->addr.ss_family != AF_INET6)
+			if (allowedip->addr.family != AF_INET6)
 				continue;
 
 			/* XXX once it works, don't zero out postfix */
@@ -704,7 +694,7 @@ peerbyroute4(struct peer **peer, struct cidraddr **addr,
 		for (o = 0; o < p->allowedipssize; o++) {
 			allowedip = p->allowedips[o];
 
-			if (allowedip->addr.ss_family != AF_INET)
+			if (allowedip->addr.family != AF_INET)
 				continue;
 
 			fa4 = (struct in_addr *)fa;
@@ -901,7 +891,7 @@ static int
 peerpark(struct peer *peer)
 {
 	char addrstr1[MAXADDRSTR], addrstr2[MAXADDRSTR];
-	struct sockaddr_storage ss;
+	union sockaddr_inet si;
 	union inet_addr addr;
 	struct kevent ev;
 	int retries;
@@ -933,9 +923,9 @@ peerpark(struct peer *peer)
 	retries = 0;
 retry:
 	rport = arc4random_uniform(IPPORT_RESERVED - 1) + 1;
-	setsockaddr((struct sockaddr *)&ss, &addr, peer->sockisv6, rport);
+	setsockaddr((struct sockaddr *)&si, &addr, peer->sockisv6, rport);
 
-	if (connect(peer->s, (struct sockaddr *)&ss, ss.ss_len) == -1) {
+	if (connect(peer->s, (struct sockaddr *)&si, si.len) == -1) {
 		if (errno == EINTR)
 			goto retry;
 
@@ -961,21 +951,21 @@ retry:
 		return -1;
 	}
 
-	len = sizeof ss;
-	if (getsockname(peer->s, (struct sockaddr *)&ss, &len) == -1) {
+	len = sizeof si;
+	if (getsockname(peer->s, (struct sockaddr *)&si, &len) == -1) {
 		logwarn("%s getsockname error", __func__);
 		peerpark(peer);
 		return -1;
 	}
-	addrtostr(addrstr1, sizeof(addrstr1), (struct sockaddr *)&ss, 0);
+	addrtostr(addrstr1, sizeof(addrstr1), (struct sockaddr *)&si, 0);
 
-	len = sizeof ss;
-	if (getpeername(peer->s, (struct sockaddr *)&ss, &len) == -1) {
+	len = sizeof si;
+	if (getpeername(peer->s, (struct sockaddr *)&si, &len) == -1) {
 		logwarn("%s getsockname error", __func__);
 		peerpark(peer);
 		return -1;
 	}
-	addrtostr(addrstr2, sizeof(addrstr2), (struct sockaddr *)&ss, 0);
+	addrtostr(addrstr2, sizeof(addrstr2), (struct sockaddr *)&si, 0);
 
 	loginfox("parked %s -> %s", addrstr1, addrstr2);
 
@@ -999,7 +989,7 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 {
 	char addrstr1[MAXADDRSTR], addrstr2[MAXADDRSTR];
 	struct kevent ev;
-	struct sockaddr_storage ss;
+	union sockaddr_inet si;
 	in_port_t lport, port;
 	int isv6, s;
 	socklen_t len;
@@ -1037,14 +1027,14 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 		return -1;
 	}
 
-	len = sizeof ss;
-	if (getsockname(peer->s, (struct sockaddr *)&ss, &len) == -1) {
+	len = sizeof si;
+	if (getsockname(peer->s, (struct sockaddr *)&si, &len) == -1) {
 		logwarn("%s getsockname error", __func__);
 		peerpark(peer);
 		return -1;
 	}
 
-	port = addrtoport((struct sockaddr *)&ss, isv6, lport);
+	port = addrtoport((struct sockaddr *)&si, isv6, lport);
 	if (port != 0 && port != lport) {
 		loginfox("reconnect from the socket with the right port");
 
@@ -1070,16 +1060,16 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 		    "remote endpoint, using %d", ntohs(lport));
 	}
 
-	len = sizeof ss;
-	if (getsockname(peer->s, (struct sockaddr *)&ss, &len) == -1) {
+	len = sizeof si;
+	if (getsockname(peer->s, (struct sockaddr *)&si, &len) == -1) {
 		logwarn("%s getsockname error", __func__);
 		peerpark(peer);
 		return -1;
 	}
-	addrtostr(addrstr1, sizeof addrstr1, (struct sockaddr *)&ss, 0);
+	addrtostr(addrstr1, sizeof addrstr1, (struct sockaddr *)&si, 0);
 
-	len = sizeof ss;
-	if (getpeername(peer->s, (struct sockaddr *)&ss, &len) == -1) {
+	len = sizeof si;
+	if (getpeername(peer->s, (struct sockaddr *)&si, &len) == -1) {
 		logwarn("%s getsockname error", __func__);
 		peerpark(peer);
 		return -1;
@@ -1643,7 +1633,7 @@ forward2tun(uint8_t *frame, size_t framesize, const struct peer *peer)
 		return -1;
 	}
 
-	*(uint32_t *)frame = htonl(addr->addr.ss_family);
+	*(uint32_t *)frame = htonl(addr->addr.family);
 
 	if (writen(tund, frame, framesize) != 0) {
 		logwarn("writen tund");
@@ -2390,7 +2380,7 @@ handlesocketmsg(struct peer *p)
 static int
 handleproxymsg(void)
 {
-	struct sockaddr_storage fsa, lsa;
+	union sockaddr_inet fsa, lsa;
 	struct msgwgdatahdr *mwdhdr;
 	struct peer *p;
 	size_t msgsize;
@@ -2574,8 +2564,8 @@ ifn_serv(void)
 	/* Connect to peers with known end-points. */
 	for (n = 0; n < ifn->peerssize; n++) {
 		peer = ifn->peers[n];
-		if ((peer->fsa.ss_family == AF_INET6 ||
-		    peer->fsa.ss_family == AF_INET) &&
+		if ((peer->fsa.family == AF_INET6 ||
+		    peer->fsa.family == AF_INET) &&
 		    peerconnect(peer, (struct sockaddr *)&peer->fsa) == -1)
 			logwarnx("peerconnect error when connecting to known "
 			    "endpoint");
@@ -2723,7 +2713,7 @@ opentunnel(const char *ifname, const char *ifdesc, int setflags)
  */
 static struct peer *
 peernew(uint32_t id, const char *name, size_t nallowedips,
-    const struct sockaddr_storage *faddr)
+    const union sockaddr_inet *faddr)
 {
 	struct peer *peer;
 
@@ -2927,7 +2917,7 @@ recvconfig(int masterport)
 		ifn->ifaddrs[n] = ifaddr;
 
 		/* pre-calculate in masks */
-		if (ifaddr->addr.ss_family == AF_INET6) {
+		if (ifaddr->addr.family == AF_INET6) {
 			memset(&ifaddr->v6mask, 0xff, 16);
 			maskip6(&ifaddr->v6mask, &ifaddr->v6mask,
 			    ifaddr->prefixlen, 1);
@@ -2935,7 +2925,7 @@ recvconfig(int masterport)
 			sin6 = (struct sockaddr_in6 *)&ifaddr->addr;
 			maskip6(&ifaddr->v6addrmasked, &sin6->sin6_addr,
 			    ifaddr->prefixlen, 1);
-		} else if (ifaddr->addr.ss_family == AF_INET) {
+		} else if (ifaddr->addr.family == AF_INET) {
 			assert(ifaddr->prefixlen <= 32);
 
 			ifaddr->v4mask = htonl(((1UL << 32) - 1) <<
@@ -3046,7 +3036,7 @@ recvconfig(int masterport)
 			peer->allowedips[n] = allowedip;
 
 			/* pre-calculate masks */
-			if (allowedip->addr.ss_family == AF_INET6) {
+			if (allowedip->addr.family == AF_INET6) {
 				sin6 = (struct sockaddr_in6 *)&allowedip->addr;
 				maskip6(&allowedip->v6addrmasked, &sin6->sin6_addr,
 				    allowedip->prefixlen, 1);
@@ -3055,7 +3045,7 @@ recvconfig(int masterport)
 				    sizeof(addrp)) == NULL)
 					logexit(1, "inet_ntop on v6 allowedip "
 					    "failed");
-			} else if (allowedip->addr.ss_family == AF_INET) {
+			} else if (allowedip->addr.family == AF_INET) {
 				assert(allowedip->prefixlen <= 32);
 
 				allowedip->v4mask = ((1UL << 32) - 1) <<
@@ -3120,7 +3110,7 @@ recvconfig(int masterport)
 		peer = ifn->peers[m];
 		for (n = 0; n < peer->allowedipssize; n++) {
 			allowedip = peer->allowedips[n];
-			if (allowedip->addr.ss_family == AF_INET6) {
+			if (allowedip->addr.family == AF_INET6) {
 				if (peerbyroute6(&peer2, &addr,
 				    &allowedip->v6addrmasked) &&
 				    peer != peer2) {

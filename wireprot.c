@@ -39,7 +39,7 @@ struct msgtype msgtypes[MTNCODES] = {
 	{ sizeof(struct msgsessid),	0 },
 	{ sizeof(struct msgsesskeys),	0 },
 	{ sizeof(struct msgreqwginit),	0 },
-	{ sizeof(struct sockaddr_storage),	0 },
+	{ sizeof(union sockaddr_inet),	0 },
 	{ sizeof(struct sinit),	0 },
 	{ sizeof(struct sifn),	0 },
 	{ sizeof(struct speer),	0 },
@@ -316,8 +316,8 @@ again:
  * Return 0 on success, -1 on error.
  */
 int
-wire_proxysendmsg(int port, uint32_t ifnid, const struct sockaddr_storage *lsa,
-    const struct sockaddr_storage *fsa, unsigned char mtcode, const void *msg,
+wire_proxysendmsg(int port, uint32_t ifnid, const union sockaddr_inet *lsa,
+    const union sockaddr_inet *fsa, unsigned char mtcode, const void *msg,
     size_t msgsize)
 {
 	struct iovec iov[5];
@@ -384,8 +384,8 @@ again:
  * Return 0 on success, -1 on error.
  */
 int
-wire_recvproxymsg(int port, uint32_t *ifnid, struct sockaddr_storage *lsa,
-    struct sockaddr_storage *fsa, unsigned char *mtcode, void *msg, size_t *msgsize)
+wire_recvproxymsg(int port, uint32_t *ifnid, union sockaddr_inet *lsa,
+    union sockaddr_inet *fsa, unsigned char *mtcode, void *msg, size_t *msgsize)
 {
 	struct iovec iov[5];
 	struct msgtype *mt;
@@ -457,8 +457,8 @@ again:
  * Return 0 on success, -1 on failure.
  */
 int
-makemsgconnreq(struct msgconnreq *mcr, const struct sockaddr_storage *fsa,
-    const struct sockaddr_storage *lsa)
+makemsgconnreq(struct msgconnreq *mcr, const union sockaddr_inet *fsa,
+    const union sockaddr_inet *lsa)
 {
 	if (mcr == NULL || fsa == NULL || lsa == NULL)
 		return -1;

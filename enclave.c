@@ -738,7 +738,7 @@ createhsresp(struct peer *peer, struct msgwgresp *mwr,
  */
 static int
 handlewginit(struct ifn *ifn, struct peer *peer,
-    struct sockaddr_storage *fsn, struct sockaddr_storage *lsn)
+    union sockaddr_inet *fsn, union sockaddr_inet *lsn)
 {
 	struct msgconnreq mcr;
 	struct msgsesskeys msk;
@@ -828,7 +828,7 @@ handlewginit(struct ifn *ifn, struct peer *peer,
  */
 static int
 handlewgresp(struct ifn *ifn, struct peer *peer,
-    struct sockaddr_storage *fsn, struct sockaddr_storage *lsn)
+    union sockaddr_inet *fsn, union sockaddr_inet *lsn)
 {
 	struct msgconnreq mcr;
 	struct msgsesskeys msk;
@@ -974,7 +974,7 @@ handleifnmsg(const struct ifn *ifn)
 static int
 handleproxymsg(void)
 {
-	struct sockaddr_storage fsn, lsn;
+	union sockaddr_inet fsn, lsn;
 	struct ifn *ifn;
 	size_t msgsize;
 	uint32_t ifnid;

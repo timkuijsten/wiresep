@@ -51,7 +51,7 @@ extern int background, verbose;
 struct sockmap {
 	int s;
 	struct ifn *ifn;
-	struct sockaddr_storage *listenaddr;
+	union sockaddr_inet *listenaddr;
 };
 
 struct sessmap {
@@ -75,7 +75,7 @@ struct ifn {
 	uint32_t id;
 	int port;
 	char *ifname;	/* null terminated name of the interface */
-	struct sockaddr_storage **listenaddrs;
+	union sockaddr_inet **listenaddrs;
 	size_t listenaddrssize;
 	wskey mac1key;
 	wskey cookiekey;
@@ -94,7 +94,7 @@ static struct ifn **ifnv;
 static size_t ifnvsize;
 
 static uint8_t msg[MAXSCRATCH];
-static struct sockaddr_storage peeraddr;
+static union sockaddr_inet peeraddr;
 /* mapping of server sockets to listenaddr or ifn */
 static struct sockmap **sockmapv;
 static size_t sockmapvsize;
@@ -665,7 +665,7 @@ recvconfig(int masterport)
 	size_t n, m, msgsize;
 	unsigned char mtcode;
 	struct ifn *ifn;
-	struct sockaddr_storage *listenaddr;
+	union sockaddr_inet *listenaddr;
 	struct peer *peer;
 	struct sessmap *sessmap;
 
@@ -759,10 +759,10 @@ recvconfig(int masterport)
 
 			assert(smsg.cidraddr.ifnid == ifn->id);
 
-			if (smsg.cidraddr.addr.ss_family != AF_INET6 &&
-			    smsg.cidraddr.addr.ss_family != AF_INET) {
+			if (smsg.cidraddr.addr.family != AF_INET6 &&
+			    smsg.cidraddr.addr.family != AF_INET) {
 				logwarnx("%s unsupported address family: %d",
-				    __func__, smsg.cidraddr.addr.ss_family);
+				    __func__, smsg.cidraddr.addr.family);
 				continue;
 			}
 
@@ -800,7 +800,7 @@ void
 proxy_init(int masterport)
 {
 	char addrstr[MAXADDRSTR];
-	struct sockaddr_storage *listenaddr;
+	union sockaddr_inet *listenaddr;
 	struct sigaction sa;
 	size_t heapneeded, i, m, n, nrlistenaddrs, nrpeers, nrsessmaps;
 	const int on = 1;
@@ -873,7 +873,7 @@ proxy_init(int masterport)
 
 		for (m = 0; m < ifnv[n]->listenaddrssize; m++) {
 			listenaddr = ifnv[n]->listenaddrs[m];
-			s = socket(listenaddr->ss_family, SOCK_DGRAM, 0);
+			s = socket(listenaddr->family, SOCK_DGRAM, 0);
 			if (s == -1)
 				logexit(1, "%s socket listenaddr", __func__);
 
@@ -887,7 +887,7 @@ proxy_init(int masterport)
 				logexit(1, "setsockopt rcvbuf error");
 
 			if (bind(s, (struct sockaddr *)listenaddr,
-			    listenaddr->ss_len) == -1) {
+			    listenaddr->len) == -1) {
 				addrtostr(addrstr, sizeof(addrstr),
 				    (struct sockaddr *)listenaddr, 0);
 				logexit(1, "%s bind failed: %s", __func__,
@@ -934,7 +934,7 @@ proxy_init(int masterport)
 	heapneeded = MINDATA;
 	heapneeded += nrpeers * sizeof(struct peer);
 	heapneeded += ifnvsize * sizeof(struct ifn);
-	heapneeded += nrlistenaddrs * sizeof(struct sockaddr_storage);
+	heapneeded += nrlistenaddrs * sizeof(union sockaddr_inet);
 	heapneeded += nrsessmaps * sizeof(struct sessmap);
 	heapneeded += sockmapvsize * sizeof(struct kevent);
 	heapneeded += sockmapvsize * sizeof(struct sockmap);

@@ -20,11 +20,23 @@
 #include <sys/socket.h>
 #include <sys/uio.h>
 
+#include <netinet/in.h>
+
 #include <stdio.h>
 
 #include "wiresep.h"
 
 enum sessidtype { SESSIDDESTROY, SESSIDTENT, SESSIDNEXT, SESSIDCURR };
+
+union sockaddr_inet {
+	struct {
+		u_int8_t    len;
+		sa_family_t family;
+		in_port_t   port;
+	};
+	struct sockaddr_in6 src6;
+	struct sockaddr_in  src4;
+};
 
 /* 1-WGINIT */
 struct msgwginit {
@@ -65,8 +77,8 @@ struct msgwgdatahdr {
 
 /* 5-CONNREQ */
 struct msgconnreq {
-	struct sockaddr_storage lsa;
-	struct sockaddr_storage fsa;
+	union sockaddr_inet lsa;
+	union sockaddr_inet fsa;
 };
 
 /* SESSID */
@@ -125,7 +137,7 @@ struct speer {
 	uint32_t ifnid;
 	uint32_t peerid;
 	char name[9];
-	struct sockaddr_storage fsa;
+	union sockaddr_inet fsa;
 	wskey psk;
 	wskey peerkey; /* XXX s/pubkey/ */
 	wskey mac1key;
@@ -136,7 +148,7 @@ struct speer {
 struct scidraddr {
 	uint32_t ifnid;
 	uint32_t peerid;
-	struct sockaddr_storage addr;
+	union sockaddr_inet addr;
 	size_t prefixlen;
 };
 
@@ -179,12 +191,12 @@ void printmsgwgresp(FILE *, const struct msgwgresp *);
 int wire_recvmsg(int port, unsigned char *mtcode, void *msg, size_t *msgsize);
 int wire_sendmsg(int port, unsigned char mtcode, const void *msg, size_t msgsize);
 int wire_proxysendmsg(int port, uint32_t ifnid,
-    const struct sockaddr_storage *lsa, const struct sockaddr_storage *fsa,
+    const union sockaddr_inet *lsa, const union sockaddr_inet *fsa,
     unsigned char mtcode, const void *msg, size_t msgsize);
 int wire_recvpeeridmsg(int port, uint32_t *peerid, unsigned char *mtcode,
     void *msg, size_t *msgsize);
-int wire_recvproxymsg(int port, uint32_t *ifnid, struct sockaddr_storage *fsa,
-    struct sockaddr_storage *lsa, unsigned char *mtcode, void *msg, size_t *msgsize);
+int wire_recvproxymsg(int port, uint32_t *ifnid, union sockaddr_inet *fsa,
+    union sockaddr_inet *lsa, unsigned char *mtcode, void *msg, size_t *msgsize);
 
 /* Send a message with a peerid. Return 0 on success, -1 */
 int wire_sendpeeridmsg(int port, uint32_t peerid, unsigned char mtcode,
@@ -192,8 +204,8 @@ int wire_sendpeeridmsg(int port, uint32_t peerid, unsigned char mtcode,
 
 /* Make a 5-CONNREQ message, updates "mcr".
  * Return 0 on success, -1 on failure. */
-int makemsgconnreq(struct msgconnreq *mcr, const struct sockaddr_storage *fsa,
-    const struct sockaddr_storage *lsa);
+int makemsgconnreq(struct msgconnreq *mcr, const union sockaddr_inet *fsa,
+    const union sockaddr_inet *lsa);
 
 /* Make a 9-REQWGINIT message, updates "mri".
  * Return 0 on success, -1 on failure. */

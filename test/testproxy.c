@@ -47,7 +47,7 @@ struct testsessmap {
 };
 
 struct testsockmap {
-	struct sockaddr_storage ss;
+	union sockaddr_inet si;
 	int s;
 };
 
@@ -231,15 +231,15 @@ testsetup(const struct cfgifn *ifn)
 	testsockmapvsize = ifn->laddrs6count;
 
 	for (i = 0; i < ifn->laddrs6count; i++) {
-		memcpy(&testsockmapv[i].ss, &ifn->laddrs6[i],
+		memcpy(&testsockmapv[i].si, &ifn->laddrs6[i],
 		    sizeof ifn->laddrs6[i]);
 
-		testsockmapv[i].s = socket(testsockmapv[i].ss.ss_family, SOCK_DGRAM, 0);
+		testsockmapv[i].s = socket(testsockmapv[i].si.family, SOCK_DGRAM, 0);
 		if (testsockmapv[i].s == -1)
 			logexit(1, "socket");
 
-		if (connect(testsockmapv[i].s, (struct sockaddr *)&testsockmapv[i].ss,
-		    testsockmapv[i].ss.ss_len) == -1)
+		if (connect(testsockmapv[i].s, (struct sockaddr *)&testsockmapv[i].si,
+		    testsockmapv[i].si.len) == -1)
 			logexit(1, "connect");
 	}
 }
@@ -422,7 +422,7 @@ static void
 testproxy_init(int masterport)
 {
 	char addrstr[MAXADDRSTR];
-	struct sockaddr_storage *listenaddr;
+	union sockaddr_inet *listenaddr;
 	struct sigaction sa;
 	const int on = 1;
 	size_t i, m, n;
@@ -460,7 +460,7 @@ testproxy_init(int masterport)
 
 		for (m = 0; m < ifnv[n]->listenaddrssize; m++) {
 			listenaddr = ifnv[n]->listenaddrs[m];
-			s = socket(listenaddr->ss_family, SOCK_DGRAM, 0);
+			s = socket(listenaddr->family, SOCK_DGRAM, 0);
 			if (s == -1)
 				logexit(1, "%s socket listenaddr", __func__);
 
@@ -474,7 +474,7 @@ testproxy_init(int masterport)
 				logexit(1, "setsockopt rcvbuf error");
 
 			if (bind(s, (struct sockaddr *)listenaddr,
-			    listenaddr->ss_len) == -1) {
+			    listenaddr->len) == -1) {
 				addrtostr(addrstr, sizeof(addrstr),
 				    (struct sockaddr *)listenaddr, 0);
 				logexit(1, "%s bind failed: %s", __func__,
