@@ -162,7 +162,7 @@ struct portsock {
 struct peer {
 	char *name;
 	uint32_t id; /* peer id */
-	int s; /* active socket */
+	int sock; /* active socket */
 	int sockisv6;
 	size_t prefixlen;
 	union sockaddr_inet fsa;
@@ -269,7 +269,7 @@ logpeerinfo(const struct peer *peer)
 	size_t n;
 
 	logwarnx("peer %u %s", peer->id, peer->name);
-	logwarnx("  sock %d", peer->s);
+	logwarnx("  sock %d", peer->sock);
 
 	if (addrtostr(addrstr, sizeof(addrstr), (struct sockaddr *)&peer->fsa,
 	    0) != -1)
@@ -898,7 +898,7 @@ peerpark(struct peer *peer)
 	socklen_t len;
 	in_port_t rport;
 
-	if (peer->s == -1) {
+	if (peer->sock == -1) {
 		errno = ENOTSOCK;
 		return -1;
 	}
@@ -908,7 +908,7 @@ peerpark(struct peer *peer)
 	 * socket. If no read filter was set (yet) on a descriptor EBADF is
 	 * returned by kevent(), ignore this.
 	 */
-	EV_SET(&ev, peer->s, EVFILT_READ, EV_DELETE, 0, 0, NULL);
+	EV_SET(&ev, peer->sock, EVFILT_READ, EV_DELETE, 0, 0, NULL);
 	if (kevent(kq, &ev, 1, NULL, 0, NULL) == -1 && errno != EBADF)
 		logwarn("%s kevent error", __func__);
 
@@ -925,7 +925,7 @@ retry:
 	rport = arc4random_uniform(IPPORT_RESERVED - 1) + 1;
 	setsockaddr((struct sockaddr *)&si, &addr, peer->sockisv6, rport);
 
-	if (connect(peer->s, (struct sockaddr *)&si, si.len) == -1) {
+	if (connect(peer->sock, (struct sockaddr *)&si, si.len) == -1) {
 		if (errno == EINTR)
 			goto retry;
 
@@ -943,7 +943,7 @@ retry:
 			    "up", rport);
 		}
 
-		peer->s = -1;
+		peer->sock = -1;
 		peer->sockisv6 = 0;
 
 		logwarn("%s %s error", peer->name, __func__);
@@ -952,7 +952,7 @@ retry:
 	}
 
 	len = sizeof si;
-	if (getsockname(peer->s, (struct sockaddr *)&si, &len) == -1) {
+	if (getsockname(peer->sock, (struct sockaddr *)&si, &len) == -1) {
 		logwarn("%s getsockname error", __func__);
 		peerpark(peer);
 		return -1;
@@ -960,7 +960,7 @@ retry:
 	addrtostr(addrstr1, sizeof(addrstr1), (struct sockaddr *)&si, 0);
 
 	len = sizeof si;
-	if (getpeername(peer->s, (struct sockaddr *)&si, &len) == -1) {
+	if (getpeername(peer->sock, (struct sockaddr *)&si, &len) == -1) {
 		logwarn("%s getsockname error", __func__);
 		peerpark(peer);
 		return -1;
@@ -969,7 +969,7 @@ retry:
 
 	loginfox("parked %s -> %s", addrstr1, addrstr2);
 
-	peer->s = -1;
+	peer->sock = -1;
 	peer->sockisv6 = 0;
 
 	return 0;
@@ -995,7 +995,7 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 	socklen_t len;
 
 	/* ensure existing sockets are parked first */
-	if (peer->s > -1)
+	if (peer->sock > -1)
 		if (peerpark(peer) == -1)
 			return -1;
 
@@ -1007,12 +1007,12 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 	 */
 
 	if (faddr->sa_family == AF_INET6) {
-		peer->s = peer->portsock6[0].s;
+		peer->sock = peer->portsock6[0].s;
 		peer->sockisv6 = 1;
 		lport =  peer->portsock6[0].p;
 		isv6 = 1;
 	} else {
-		peer->s = peer->portsock4[0].s;
+		peer->sock = peer->portsock4[0].s;
 		peer->sockisv6 = 0;
 		lport =  peer->portsock4[0].p;
 		isv6 = 0;
@@ -1022,13 +1022,13 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 	 * Connect and listen for events (overwrites if already set).
 	 */
 
-	if (connect(peer->s, faddr, faddr->sa_len) == -1) {
+	if (connect(peer->sock, faddr, faddr->sa_len) == -1) {
 		logwarn("connect to remote endpoint failed");
 		return -1;
 	}
 
 	len = sizeof si;
-	if (getsockname(peer->s, (struct sockaddr *)&si, &len) == -1) {
+	if (getsockname(peer->sock, (struct sockaddr *)&si, &len) == -1) {
 		logwarn("%s getsockname error", __func__);
 		peerpark(peer);
 		return -1;
@@ -1053,7 +1053,7 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 			return -1;
 		}
 
-		peer->s = s;
+		peer->sock = s;
 		peer->sockisv6 = isv6;
 	} else if (port == 0) {
 		logwarnx("could not find a suitable local port to connect to "
@@ -1061,7 +1061,7 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 	}
 
 	len = sizeof si;
-	if (getsockname(peer->s, (struct sockaddr *)&si, &len) == -1) {
+	if (getsockname(peer->sock, (struct sockaddr *)&si, &len) == -1) {
 		logwarn("%s getsockname error", __func__);
 		peerpark(peer);
 		return -1;
@@ -1069,7 +1069,7 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 	addrtostr(addrstr1, sizeof addrstr1, (struct sockaddr *)&si, 0);
 
 	len = sizeof si;
-	if (getpeername(peer->s, (struct sockaddr *)&si, &len) == -1) {
+	if (getpeername(peer->sock, (struct sockaddr *)&si, &len) == -1) {
 		logwarn("%s getsockname error", __func__);
 		peerpark(peer);
 		return -1;
@@ -1078,7 +1078,7 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 
 	loginfox("connected %s -> %s", addrstr1, addrstr2);
 
-	EV_SET(&ev, peer->s, EVFILT_READ, EV_ADD, 0, 0, NULL);
+	EV_SET(&ev, peer->sock, EVFILT_READ, EV_ADD, 0, 0, NULL);
 	if (kevent(kq, &ev, 1, NULL, 0, NULL) == -1)
 		logexit(1, "%s kevent error", __func__);
 
@@ -1475,7 +1475,7 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 		return -1;
 	}
 
-	if (sendwgdatamsg(sess->peer->s, sess->peerid, sess->nextnonce, out,
+	if (sendwgdatamsg(sess->peer->sock, sess->peerid, sess->nextnonce, out,
 	    outsize) == -1) {
 		logwarnx("error sending data to %s", sess->peer->name);
 		return -1;
@@ -1851,7 +1851,7 @@ handleenclavemsg(void)
 			p->sesstent.id = le32toh(mwi->sender);
 			settimer(p->sesstent.id, REKEY_TIMEOUT);
 
-			rc = write(p->s, msg, msgsize);
+			rc = write(p->sock, msg, msgsize);
 			if (rc < 0)
 				logexit(1, "%s write MSGWGINIT", __func__);
 
@@ -1905,7 +1905,7 @@ handleenclavemsg(void)
 		p->sessnext.start = now;
 		p->sessnext.state = RESPSENT;
 
-		rc = write(p->s, msg, msgsize);
+		rc = write(p->sock, msg, msgsize);
 		if (rc < 0) {
 			logwarn("%s write MSGWGRESP", __func__);
 			stats.sockouterr++;
@@ -2130,7 +2130,7 @@ handletundmsg(void)
 	if (verbose > 1)
 		loginfox("packet for %s", p->name);
 
-	if (p->s == -1) {
+	if (p->sock == -1) {
 		errno = EDESTADDRREQ;
 		logwarn("peer not connected");
 		stats.sockouterr++;
@@ -2247,7 +2247,7 @@ handlesocketmsg(struct peer *p)
 	size_t msgsize;
 	unsigned char mtcode;
 
-	rc = read(p->s, msg, sizeof(msg));
+	rc = read(p->sock, msg, sizeof(msg));
 	if (rc < 0) {
 		logwarn("%s read error", __func__);
 		peerpark(p);
@@ -2627,7 +2627,7 @@ ifn_serv(void)
 				for (peer = NULL, n = 0; n < ifn->peerssize &&
 				    peer == NULL; n++) {
 					if ((int)ev[i].ident ==
-					    ifn->peers[n]->s) {
+					    ifn->peers[n]->sock) {
 						peer = ifn->peers[n];
 					}
 				}
@@ -2722,7 +2722,7 @@ peernew(uint32_t id, const char *name, size_t nallowedips,
 
 	peer->id = id;
 	peer->name = strdup(name);
-	peer->s = -1;
+	peer->sock = -1;
 	peer->sockisv6 = 0;
 	peer->portsock6 = NULL;
 	peer->portsock4 = NULL;
@@ -2809,7 +2809,7 @@ xaddportsock(struct peer *peer, in_port_t port, int isv6)
 		logexit(1, "%s bind on port %u failed", __func__, ntohs(port));
 
 	/* activate so we can park the socket */
-	peer->s = ps->s;
+	peer->sock = ps->s;
 	peer->sockisv6 = isv6;
 	if (peerpark(peer) == -1)
 		logexit(1, "%s peerpark failed", __func__);
