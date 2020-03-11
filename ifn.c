@@ -1841,29 +1841,37 @@ handleenclavemsg(void)
 
 		if (p->sesstent.state == INITREQ) {
 			/*
-			 * Reset timer and set session id to the one from the
-			 * enclave.
+			 * Reset timer, set session id to the one from the
+			 * enclave, send the message to the peer and if this
+			 * succeeds schedule a new timer.
 			 */
 			if (cleartimer(p->sesstent.id) == -1)
 				logwarn("%s rekey timer for %x not set",
 				    __func__, p->sesstent.id);
 
 			p->sesstent.id = le32toh(mwi->sender);
-			settimer(p->sesstent.id, REKEY_TIMEOUT);
 
 			rc = write(p->sock, msg, msgsize);
-			if (rc < 0)
-				logexit(1, "%s write MSGWGINIT", __func__);
-
-			if ((size_t)rc != msgsize)
-				logexitx(1, "%s write MSGWGINIT %zd", __func__,
-				    rc);
-
-			p->sesstent.state = INITSENT;
-
+			if (rc < 0) {
+				logwarn("%s write MSGWGINIT", __func__);
+				stats.sockouterr++;
+				stats.initouterr++;
+				return -1;
+			}
+			if ((size_t)rc != msgsize) {
+				logwarnx("%s write MSGWGINIT %zd expected %zu",
+				    __func__, rc, msgsize);
+				stats.sockouterr++;
+				stats.initouterr++;
+				return -1;
+			}
 			stats.initout++;
 			stats.sockout++;
 			stats.sockoutsz += msgsize;
+
+			p->sesstent.state = INITSENT;
+
+			settimer(p->sesstent.id, REKEY_TIMEOUT);
 
 			if (notifyproxy(p->id, p->sesstent.id, SESSIDTENT)
 			    == -1)
@@ -2250,6 +2258,7 @@ handlesocketmsg(struct peer *p)
 	rc = read(p->sock, msg, sizeof(msg));
 	if (rc < 0) {
 		logwarn("%s read error", __func__);
+		stats.sockinerr++;
 		peerpark(p);
 		return -1;
 	}
