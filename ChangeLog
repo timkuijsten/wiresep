@@ -1,3 +1,13 @@
+2020-03-15, Version 0.9.0
+
+* support client-only mode, the listen configuration directive is now optional
+* greatly reduce IPC message size
+* refactor local address selection, fixes race conditions and stability
+* do not exit when a write to the peer socket fails
+* shrink socket receive buffers from 524216 to 131054 bytes
+* queue at most 50 packets instead of 1000
+
+
 2019-11-20, Version 0.8.4
 
 * default the user to "_wiresep" if omitted
