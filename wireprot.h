@@ -34,8 +34,8 @@ union sockaddr_inet {
 		sa_family_t family;
 		in_port_t   port;
 	};
-	struct sockaddr_in6 src6;
-	struct sockaddr_in  src4;
+	struct sockaddr_in6 v6;
+	struct sockaddr_in  v4;
 };
 
 /* 1-WGINIT */

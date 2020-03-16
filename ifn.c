@@ -2787,7 +2787,7 @@ xaddportsock(struct peer *peer, in_port_t port, int isv6)
 		if (ps->s == -1)
 			logexit(1, "%s socket error", __func__);
 
-		sa = (struct sockaddr *)&src.src6;
+		sa = (struct sockaddr *)&src.v6;
 	} else {
 		peer->portsock4count += 1;
 		peer->portsock4 = reallocarray(peer->portsock4,
@@ -2801,7 +2801,7 @@ xaddportsock(struct peer *peer, in_port_t port, int isv6)
 		if (ps->s == -1)
 			logexit(1, "%s socket error", __func__);
 
-		sa = (struct sockaddr *)&src.src4;
+		sa = (struct sockaddr *)&src.v4;
 	}
 
 	setsockaddr(sa, NULL, isv6, port);
