@@ -2942,8 +2942,7 @@ recvconfig(int masterport)
 
 			sin = (struct sockaddr_in *)&ifaddr->addr;
 			ifaddr->v4addrmasked =
-			    htonl(ntohl(sin->sin_addr.s_addr)
-			    & ntohl(ifaddr->v4mask));
+			    sin->sin_addr.s_addr & ifaddr->v4mask;
 
 			if (verbose > 1)
 				loginfox("%s %s/%zu",
