@@ -137,10 +137,10 @@ struct session {
 
 struct cidraddr {
 	union sockaddr_inet addr;
-	in_addr_t v4addrmasked;
-	uint32_t v4mask;
 	struct in6_addr v6addrmasked;
 	struct in6_addr v6mask;
+	struct in_addr v4addrmasked;
+	struct in_addr v4mask;
 	size_t prefixlen;
 };
 
@@ -417,7 +417,7 @@ assignaddr4(const char *ifname, const struct cidraddr *ca)
 	memset(&mask, 0, sizeof(mask));
 	mask.sin_len = sizeof(mask);
 	mask.sin_family = AF_INET;
-	mask.sin_addr.s_addr = ca->v4mask;
+	mask.sin_addr = ca->v4mask;
 
 	memcpy(&addreq.ifra_addr, &ca->addr, sizeof(addreq.ifra_addr));
 	memcpy(&addreq.ifra_mask, &mask, sizeof(addreq.ifra_mask));
@@ -663,9 +663,8 @@ peerbyroute6(struct peer **peer, struct cidraddr **addr,
 }
 
 /*
- * Find a peer with most specific "allowedips" by a remote address. "fa" must
- * be a pointer to the foreign address. If multiple allowedips match the same
- * mask or prefix length, the last one is choosen.
+ * Find a peer based on its allowed ips and the address "fa". "fa" must be in
+ * network byte order. The first most-specific match is returned.
  *
  * Return 1 if a peer with a matching route is found and updates "peer" to point
  * to it as well as "addr" to the addr that matched. Returns 0 if no peer is
@@ -696,8 +695,8 @@ peerbyroute4(struct peer **peer, struct cidraddr **addr,
 			if (allowedip->addr.family != AF_INET)
 				continue;
 
-			if ((ntohl(fa->s_addr) & allowedip->v4mask) ==
-			    allowedip->v4addrmasked &&
+			if ((fa->s_addr & allowedip->v4mask.s_addr) ==
+			    allowedip->v4addrmasked.s_addr &&
 			    allowedip->prefixlen >= maxprefixlen) {
 				*peer = p;
 				*addr = allowedip;
@@ -2937,12 +2936,12 @@ recvconfig(int masterport)
 		} else if (ifaddr->addr.family == AF_INET) {
 			assert(ifaddr->prefixlen <= 32);
 
-			ifaddr->v4mask = htonl(((1UL << 32) - 1) <<
+			ifaddr->v4mask.s_addr = htonl(((1UL << 32) - 1) <<
 			    (32 - ifaddr->prefixlen));
 
 			sin = (struct sockaddr_in *)&ifaddr->addr;
-			ifaddr->v4addrmasked =
-			    sin->sin_addr.s_addr & ifaddr->v4mask;
+			ifaddr->v4addrmasked.s_addr =
+			    sin->sin_addr.s_addr & ifaddr->v4mask.s_addr;
 
 			if (verbose > 1)
 				loginfox("%s %s/%zu",
@@ -3056,13 +3055,14 @@ recvconfig(int masterport)
 			} else if (allowedip->addr.family == AF_INET) {
 				assert(allowedip->prefixlen <= 32);
 
-				allowedip->v4mask = ((1UL << 32) - 1) <<
-				    (32 - allowedip->prefixlen);
+				allowedip->v4mask.s_addr =
+				    htonl(((1UL << 32) - 1) <<
+				    (32 - allowedip->prefixlen));
 
 				sin = (struct sockaddr_in *)&allowedip->addr;
-				allowedip->v4addrmasked =
-				    ntohl(sin->sin_addr.s_addr)
-				    & allowedip->v4mask;
+				allowedip->v4addrmasked.s_addr =
+				    sin->sin_addr.s_addr &
+				    allowedip->v4mask.s_addr;
 
 				if (inet_ntop(AF_INET, &sin->sin_addr, addrp,
 				    sizeof(addrp)) == NULL)
