@@ -2136,7 +2136,8 @@ handletundmsg(void)
 	}
 
 	if (verbose > 1)
-		loginfox("packet for %s, using %x", p->name, p->scurr->id);
+		loginfox("packet for %s, using %x", p->name,
+		    p->scurr == NULL ? 0x0 : p->scurr->id);
 
 	if (p->sock == -1) {
 		errno = EDESTADDRREQ;
