@@ -678,7 +678,6 @@ peerbyroute4(struct peer **peer, struct cidraddr **addr,
     const struct in_addr *fa)
 {
 	struct cidraddr *allowedip;
-	struct in_addr *fa4;
 	struct peer *p;
 	size_t maxprefixlen;
 
@@ -697,8 +696,7 @@ peerbyroute4(struct peer **peer, struct cidraddr **addr,
 			if (allowedip->addr.family != AF_INET)
 				continue;
 
-			fa4 = (struct in_addr *)fa;
-			if ((ntohl(fa4->s_addr) & allowedip->v4mask) ==
+			if ((ntohl(fa->s_addr) & allowedip->v4mask) ==
 			    allowedip->v4addrmasked &&
 			    allowedip->prefixlen >= maxprefixlen) {
 				*peer = p;
