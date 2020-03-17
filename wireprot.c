@@ -463,8 +463,8 @@ makemsgconnreq(struct msgconnreq *mcr, const union sockaddr_inet *fsa,
 	if (mcr == NULL || fsa == NULL || lsa == NULL)
 		return -1;
 
-	memcpy(&mcr->fsa, fsa, sizeof(*fsa));
-	memcpy(&mcr->lsa, lsa, sizeof(*lsa));
+	memcpy(&mcr->fsa, fsa, MIN(sizeof mcr->fsa, sizeof *fsa));
+	memcpy(&mcr->lsa, lsa, MIN(sizeof mcr->lsa, sizeof *lsa));
 
 	return 0;
 }

@@ -534,7 +534,8 @@ upgradehsinit(struct ifn *ifn, struct msgwginit *mwi, struct peer **peer,
 		}
 
 		/* Successfully authenticated */
-		memcpy((*peer)->recvts, tmpts, sizeof((*peer)->recvts));
+		memcpy((*peer)->recvts, tmpts,
+		    MIN(sizeof (*peer)->recvts, sizeof tmpts));
 		memcpy(hs->epubi, mwi->ephemeral, KEYLEN);
 	} else {
 		n = sizeof(mwi->timestamp);
@@ -1169,14 +1170,15 @@ recvconfig(int masterport)
 			logexit(1, "calloc ifnv->peers");
 
 		memcpy(ifn->privkey, smsg.ifn.privkey,
-		    sizeof(smsg.ifn.privkey));
-		memcpy(ifn->pubkey, smsg.ifn.pubkey, sizeof(smsg.ifn.pubkey));
+		    MIN(sizeof ifn->privkey, sizeof smsg.ifn.privkey));
+		memcpy(ifn->pubkey, smsg.ifn.pubkey,
+		    MIN(sizeof ifn->pubkey, sizeof smsg.ifn.pubkey));
 		memcpy(ifn->pubkeyhash, smsg.ifn.pubkeyhash,
-		    sizeof(smsg.ifn.pubkeyhash));
+		    MIN(sizeof ifn->pubkeyhash, sizeof smsg.ifn.pubkeyhash));
 		memcpy(ifn->mac1key, smsg.ifn.mac1key,
-		    sizeof(smsg.ifn.mac1key));
+		    MIN(sizeof ifn->mac1key, sizeof smsg.ifn.mac1key));
 		memcpy(ifn->cookiekey, smsg.ifn.cookiekey,
-		    sizeof(smsg.ifn.cookiekey));
+		    MIN(sizeof ifn->cookiekey, sizeof smsg.ifn.cookiekey));
 
 		for (m = 0; m < ifn->peerssize; m++) {
 			if ((p = malloc(sizeof(*p))) == NULL)
@@ -1195,11 +1197,12 @@ recvconfig(int masterport)
 			p->ifn = ifn;
 			p->id = m;
 
-			memcpy(p->psk, smsg.peer.psk, sizeof(smsg.peer.psk));
+			memcpy(p->psk, smsg.peer.psk,
+			    MIN(sizeof p->psk, sizeof smsg.peer.psk));
 			memcpy(p->pubkey, smsg.peer.peerkey,
-			    sizeof(smsg.peer.peerkey));
+			    MIN(sizeof p->pubkey, sizeof smsg.peer.peerkey));
 			memcpy(p->mac1key, smsg.peer.mac1key,
-			    sizeof(smsg.peer.mac1key));
+			    MIN(sizeof p->mac1key, sizeof smsg.peer.mac1key));
 
 			memcpy(p->pubkeyhash, considhash, HASHLEN);
 			appendhash(p->pubkeyhash, smsg.peer.peerkey, KEYLEN);

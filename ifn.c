@@ -376,8 +376,10 @@ assignaddr6(const char *ifname, const struct cidraddr *ca)
 	mask.sin6_family = AF_INET6;
 	mask.sin6_addr = ca->v6mask;
 
-	memcpy(&addreq.ifra_addr, &ca->addr, sizeof(addreq.ifra_addr));
-	memcpy(&addreq.ifra_prefixmask, &mask, sizeof(addreq.ifra_prefixmask));
+	memcpy(&addreq.ifra_addr, &ca->addr,
+	    MIN(sizeof addreq.ifra_addr, sizeof ca->addr));
+	memcpy(&addreq.ifra_prefixmask, &mask,
+	    MIN(sizeof addreq.ifra_prefixmask, sizeof mask));
 
 	if ((s = socket(AF_INET6, SOCK_DGRAM, 0)) == -1)
 		logexitx(1, "%s socket", __func__);
@@ -419,8 +421,10 @@ assignaddr4(const char *ifname, const struct cidraddr *ca)
 	mask.sin_family = AF_INET;
 	mask.sin_addr = ca->v4mask;
 
-	memcpy(&addreq.ifra_addr, &ca->addr, sizeof(addreq.ifra_addr));
-	memcpy(&addreq.ifra_mask, &mask, sizeof(addreq.ifra_mask));
+	memcpy(&addreq.ifra_addr, &ca->addr,
+	    MIN(sizeof addreq.ifra_addr, sizeof ca->addr));
+	memcpy(&addreq.ifra_mask, &mask,
+	    MIN(sizeof addreq.ifra_mask, sizeof mask));
 
 	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 		logexitx(1, "%s socket", __func__);
@@ -1373,9 +1377,9 @@ makenextcurr(struct peer *peer)
 	peer->scurr->nextnonce = 0;
 	memset(&peer->scurr->arrecv, 0, sizeof(peer->scurr->arrecv));
 	memcpy(&peer->scurr->sendctx, &peer->sessnext.sendctx,
-	    sizeof(peer->sessnext.sendctx));
+	    MIN(sizeof peer->scurr->sendctx, sizeof peer->sessnext.sendctx));
 	memcpy(&peer->scurr->recvctx, &peer->sessnext.recvctx,
-	    sizeof(peer->sessnext.recvctx));
+	    MIN(sizeof peer->scurr->recvctx, sizeof peer->sessnext.recvctx));
 
 	explicit_bzero(&peer->sessnext, sizeof(peer->sessnext));
 	peer->sessnext.id = -1;
@@ -2735,7 +2739,7 @@ peernew(uint32_t id, const char *name, size_t nallowedips,
 	SIMPLEQ_INIT(&peer->qpacketlist);
 	peer->allowedipssize = nallowedips;
 
-	memcpy(&peer->fsa, faddr, sizeof(*faddr));
+	memcpy(&peer->fsa, faddr, MIN(sizeof peer->fsa, sizeof *faddr));
 
 	peer->allowedips = reallocarray(NULL, peer->allowedipssize,
 	    sizeof *peer->allowedips);
@@ -2879,8 +2883,10 @@ recvconfig(int masterport)
 	ifn->ifaddrssize = smsg.ifn.nifaddrs;
 	ifn->laddr6count = smsg.ifn.laddr6count;
 	ifn->laddr4count = smsg.ifn.laddr4count;
-	memcpy(ifn->mac1key, smsg.ifn.mac1key, sizeof(smsg.ifn.mac1key));
-	memcpy(ifn->cookiekey, smsg.ifn.cookiekey, sizeof(smsg.ifn.cookiekey));
+	memcpy(ifn->mac1key, smsg.ifn.mac1key,
+	    MIN(sizeof ifn->mac1key, sizeof smsg.ifn.mac1key));
+	memcpy(ifn->cookiekey, smsg.ifn.cookiekey,
+	    MIN(sizeof ifn->cookiekey, sizeof smsg.ifn.cookiekey));
 
 	ifn->ifaddrs = calloc(ifn->ifaddrssize, sizeof *ifn->ifaddrs);
 	if (ifn->ifaddrs == NULL)
@@ -2913,7 +2919,7 @@ recvconfig(int masterport)
 
 		ifaddr->prefixlen = smsg.cidraddr.prefixlen;
 		memcpy(&ifaddr->addr, &smsg.cidraddr.addr,
-		    sizeof smsg.cidraddr.addr);
+		    MIN(sizeof ifaddr->addr, sizeof smsg.cidraddr.addr));
 
 		ifn->ifaddrs[n] = ifaddr;
 
@@ -3031,7 +3037,7 @@ recvconfig(int masterport)
 
 			allowedip->prefixlen = smsg.cidraddr.prefixlen;
 			memcpy(&allowedip->addr, &smsg.cidraddr.addr,
-			    sizeof smsg.cidraddr.addr);
+			    MIN(sizeof allowedip->addr, sizeof smsg.cidraddr.addr));
 
 			peer->allowedips[n] = allowedip;
 

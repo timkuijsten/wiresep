@@ -703,9 +703,9 @@ recvconfig(int masterport)
 		ifn->listenaddrssize = smsg.ifn.laddr6count +
 		    smsg.ifn.laddr4count;
 		memcpy(ifn->mac1key, smsg.ifn.mac1key,
-		    sizeof(smsg.ifn.mac1key));
+		    MIN(sizeof ifn->mac1key, sizeof smsg.ifn.mac1key));
 		memcpy(ifn->cookiekey, smsg.ifn.cookiekey,
-		    sizeof(smsg.ifn.cookiekey));
+		    MIN(sizeof ifn->cookiekey, sizeof smsg.ifn.cookiekey));
 
 		ifn->peerssize = smsg.ifn.npeers;
 		if ((ifn->peers = calloc(ifn->peerssize, sizeof(*ifn->peers)))
@@ -770,7 +770,7 @@ recvconfig(int masterport)
 				logexit(1, "%s malloc listenaddr", __func__);
 
 			memcpy(listenaddr, &smsg.cidraddr.addr,
-			    sizeof smsg.cidraddr.addr);
+			    MIN(sizeof *listenaddr, sizeof smsg.cidraddr.addr));
 
 			ifn->listenaddrs[m] = listenaddr;
 		}
