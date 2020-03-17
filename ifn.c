@@ -440,26 +440,19 @@ assignaddr4(const char *ifname, const struct cidraddr *ca)
 static int
 assignaddr(const char *ifname, const struct cidraddr *ca)
 {
-	int s, rc;
-
-	s = -1;
-	rc = -1;
-
 	if (ifname == NULL || ca == NULL) {
 		errno = EINVAL;
 		return -1;
 	}
 
 	if (ca->addr.family == AF_INET6) {
-		rc = assignaddr6(ifname, ca);
+		return assignaddr6(ifname, ca);
 	} else if (ca->addr.family == AF_INET) {
-		rc = assignaddr4(ifname, ca);
+		return assignaddr4(ifname, ca);
 	} else {
 		errno = EINVAL;
 		return -1;
 	}
-
-	return rc;
 }
 
 /*
