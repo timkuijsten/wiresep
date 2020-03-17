@@ -33,7 +33,7 @@ union sockaddr_inet {
 		u_int8_t    len;
 		sa_family_t family;
 		in_port_t   port;
-	};
+	} h;
 	struct sockaddr_in6 v6;
 	struct sockaddr_in  v4;
 };

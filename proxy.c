@@ -759,10 +759,10 @@ recvconfig(int masterport)
 
 			assert(smsg.cidraddr.ifnid == ifn->id);
 
-			if (smsg.cidraddr.addr.family != AF_INET6 &&
-			    smsg.cidraddr.addr.family != AF_INET) {
+			if (smsg.cidraddr.addr.h.family != AF_INET6 &&
+			    smsg.cidraddr.addr.h.family != AF_INET) {
 				logwarnx("%s unsupported address family: %d",
-				    __func__, smsg.cidraddr.addr.family);
+				    __func__, smsg.cidraddr.addr.h.family);
 				continue;
 			}
 
@@ -873,7 +873,7 @@ proxy_init(int masterport)
 
 		for (m = 0; m < ifnv[n]->listenaddrssize; m++) {
 			listenaddr = ifnv[n]->listenaddrs[m];
-			s = socket(listenaddr->family, SOCK_DGRAM, 0);
+			s = socket(listenaddr->h.family, SOCK_DGRAM, 0);
 			if (s == -1)
 				logexit(1, "%s socket listenaddr", __func__);
 
@@ -887,7 +887,7 @@ proxy_init(int masterport)
 				logexit(1, "setsockopt rcvbuf error");
 
 			if (bind(s, (struct sockaddr *)listenaddr,
-			    listenaddr->len) == -1) {
+			    listenaddr->h.len) == -1) {
 				addrtostr(addrstr, sizeof(addrstr),
 				    (struct sockaddr *)listenaddr, 0);
 				logexit(1, "%s bind failed: %s", __func__,
