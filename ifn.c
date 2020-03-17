@@ -1055,7 +1055,7 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 
 		peer->sock = s;
 		peer->sockisv6 = isv6;
-	} else if (port == 0) {
+	} else if (port == 0 && lport != 0) {
 		logwarnx("could not find a suitable local port to connect to "
 		    "remote endpoint, using %d", ntohs(lport));
 	}
