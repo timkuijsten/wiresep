@@ -2967,7 +2967,7 @@ recvconfig(int masterport)
 		assert(smsg.cidraddr.ifnid == ifn->id);
 
 		memcpy(&ifn->laddr6[n], &smsg.cidraddr.addr,
-		    sizeof smsg.cidraddr.addr);
+		    MIN(sizeof *ifn->laddr6, sizeof smsg.cidraddr.addr));
 	}
 
 	for (n = 0; n < ifn->laddr4count; n++) {
@@ -2981,7 +2981,7 @@ recvconfig(int masterport)
 
 		/* TODO check for dupes */
 		memcpy(&ifn->laddr4[n], &smsg.cidraddr.addr,
-		    sizeof smsg.cidraddr.addr);
+		    MIN(sizeof *ifn->laddr4, sizeof smsg.cidraddr.addr));
 	}
 
 	/* ensure at least one local address */

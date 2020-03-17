@@ -31,6 +31,9 @@
 #define MAXIPSTR 49
 #define MAXADDRSTR (MAXIPSTR > MAXLINKSTR ? MAXIPSTR : MAXLINKSTR)
 
+#define MIN(a,b) ((a) < (b) ? (a) : (b))
+#define MAX(a,b) ((a) > (b) ? (a) : (b))
+
 int isopenfd(int);
 int readhexnomem(uint8_t *, size_t, const char *, size_t);
 void hexdump(FILE *, const uint8_t *, size_t , size_t);
