@@ -939,21 +939,14 @@ proxy_init(int masterport)
 	heapneeded += sockmapvsize * sizeof(struct kevent);
 	heapneeded += sockmapvsize * sizeof(struct sockmap);
 
-	if (ensurelimit(RLIMIT_DATA, heapneeded) == -1)
-		logexit(1, "%s ensurelimit data", __func__);
-	if (ensurelimit(RLIMIT_FSIZE, MAXCORE) == -1)
-		logexit(1, "%s ensurelimit fsize", __func__);
-	if (ensurelimit(RLIMIT_CORE, MAXCORE) == -1)
-		logexit(1, "%s ensurelimit core", __func__);
-	if (ensurelimit(RLIMIT_MEMLOCK, 0) == -1)
-		logexit(1, "%s ensurelimit memlock", __func__);
+	xensurelimit(RLIMIT_DATA, heapneeded);
+	xensurelimit(RLIMIT_FSIZE, MAXCORE);
+	xensurelimit(RLIMIT_CORE, MAXCORE);
+	xensurelimit(RLIMIT_MEMLOCK, 0);
 	/* kqueue will be opened later */
-	if (ensurelimit(RLIMIT_NOFILE, getdtablecount() + 1) == -1)
-		logexit(1, "%s ensurelimit nofile", __func__);
-	if (ensurelimit(RLIMIT_NPROC, 0) == -1)
-		logexit(1, "%s ensurelimit nproc", __func__);
-	if (ensurelimit(RLIMIT_STACK, MAXSTACK) == -1)
-		logexit(1, "%s ensurelimit stack", __func__);
+	xensurelimit(RLIMIT_NOFILE, getdtablecount() + 1);
+	xensurelimit(RLIMIT_NPROC, 0);
+	xensurelimit(RLIMIT_STACK, MAXSTACK);
 
 	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
 	sa.sa_handler = handlesig;

@@ -3233,21 +3233,14 @@ ifn_init(int masterport)
 		heapneeded += ifn->peers[n]->portsock4count * sizeof(struct portsock);
 	}
 
-	if (ensurelimit(RLIMIT_DATA, heapneeded) == -1)
-		logexit(1, "ensurelimit data");
-	if (ensurelimit(RLIMIT_FSIZE, MAXCORE) == -1)
-		logexit(1, "ensurelimit fsize");
-	if (ensurelimit(RLIMIT_CORE, MAXCORE) == -1)
-		logexit(1, "ensurelimit core");
-	if (ensurelimit(RLIMIT_MEMLOCK, 0) == -1)
-		logexit(1, "ensurelimit memlock");
+	xensurelimit(RLIMIT_DATA, heapneeded);
+	xensurelimit(RLIMIT_FSIZE, MAXCORE);
+	xensurelimit(RLIMIT_CORE, MAXCORE);
+	xensurelimit(RLIMIT_MEMLOCK, 0);
 	/* kqueue will be opened later */
-	if (ensurelimit(RLIMIT_NOFILE, getdtablecount() + 1) == -1)
-		logexit(1, "ensurelimit nofile");
-	if (ensurelimit(RLIMIT_NPROC, 0) == -1)
-		logexit(1, "ensurelimit nproc");
-	if (ensurelimit(RLIMIT_STACK, MAXSTACK) == -1)
-		logexit(1, "ensurelimit stack");
+	xensurelimit(RLIMIT_NOFILE, getdtablecount() + 1);
+	xensurelimit(RLIMIT_NPROC, 0);
+	xensurelimit(RLIMIT_STACK, MAXSTACK);
 
 	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
 	sa.sa_handler = handlesig;

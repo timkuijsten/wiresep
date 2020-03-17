@@ -207,10 +207,10 @@ hexdump(FILE *fp, const uint8_t *data, size_t datalen, size_t maxwidth)
  * If the current or maximum limit of "resource" exceed "limit", set both to
  * "limit".
  *
- * Return 0 on success, or -1 on failure with errno set.
+ * Exit on error.
  */
-int
-ensurelimit(int resource, size_t limit)
+void
+xensurelimit(int resource, size_t limit)
 {
 	struct rlimit rl;
 	const char *infostr;
@@ -247,30 +247,31 @@ ensurelimit(int resource, size_t limit)
 		infostr = "";
 	}
 
-	if (getrlimit(resource, &rl) == -1)
-		return -1;
+	if (getrlimit(resource, &rl) == -1) {
+		logwarn("getrlimit error when trying to fetch the %s limits",
+		    infostr);
+		exit(1);
+	}
 
 	if (rl.rlim_cur > limit) {
-		loginfox("decreasing current %s limit from %llu to %lu",
-		    infostr, rl.rlim_cur, limit);
-
 		rl.rlim_cur = limit;
 
-		if (setrlimit(resource, &rl) == -1)
-			return -1;
+		if (setrlimit(resource, &rl) == -1) {
+			logwarn("setrlimit error when trying to lower the "
+			    "current %s limit to %lu", infostr, limit);
+			exit(1);
+		}
 	}
 
 	if (rl.rlim_max > limit) {
-		loginfox("decreasing maximum %s limit from %llu to %lu",
-		    infostr, rl.rlim_max, limit);
-
 		rl.rlim_max = limit;
 
-		if (setrlimit(resource, &rl) == -1)
-			return -1;
+		if (setrlimit(resource, &rl) == -1) {
+			logwarn("setrlimit error when trying to lower the "
+			    "maximum %s limit to %lu", infostr, limit);
+			exit(1);
+		}
 	}
-
-	return 0;
 }
 
 /*
