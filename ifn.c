@@ -2104,8 +2104,9 @@ handletundmsg(void)
 			logwarnx("invalid ipv6 packet");
 		ip6hdr = (struct ip6_hdr *)&msg[TUNHDRSIZ];
 		if (!peerbyroute6(&p, &addr, &ip6hdr->ip6_dst)) {
-			addrtostr((char *)msg, sizeof(msg),
-			    (struct sockaddr *)&ip6hdr->ip6_dst, 1);
+			if (inet_ntop(AF_INET6, &ip6hdr->ip6_dst, (char *)msg,
+			    sizeof msg) == NULL)
+				logwarn("%s inet_ntop error", __func__);
 
 			lognoticex("no route to %s", msg);
 
@@ -3124,9 +3125,11 @@ recvconfig(int masterport)
 				if (peerbyroute6(&peer2, &addr,
 				    &allowedip->v6addrmasked) &&
 				    peer != peer2) {
-					addrtostr(addrstr, sizeof(addrstr),
-					    (struct sockaddr *)&allowedip->v6addrmasked,
-					    1);
+					if (inet_ntop(AF_INET6,
+					    &allowedip->v6addrmasked, addrstr,
+					    sizeof addrstr) == NULL)
+						logexit(1, "%s inet_ntop error",
+						    __func__);
 
 					logexitx(1, "%s: %s/%zu\n",
 					    "multiple allowedips with the same "
