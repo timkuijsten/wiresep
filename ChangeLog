@@ -1,3 +1,11 @@
+2020-03-18, Version 0.9.1
+
+* fix crash on first packet in client-only mode
+* fix an out-of-bound write when parsing an ipv4 listen address
+* fix logging unknown destination ip6 addresses
+* fix a warning in client-only mode about finding a suitable local port
+
+
 2020-03-15, Version 0.9.0
 
 * support client-only mode, the listen configuration directive is now optional
