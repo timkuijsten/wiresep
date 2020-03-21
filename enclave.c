@@ -860,7 +860,7 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 		return -1;
 	}
 
-	peer->hs->peersessid = mwr->sender;
+	peer->hs->peersessid = le32toh(mwr->sender);
 
 	if (fsn && lsn) {
 		/* send MSGCONNREQ */
