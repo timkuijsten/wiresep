@@ -38,19 +38,19 @@ main(void)
 	if (base64_ntop(privkey, sizeof(privkey), b64, sizeof(b64)) != 44)
 		errx(1, "b64_ntop");
 
-	fprintf(stdout, "privkey\t%s\n", b64);
+	fprintf(stdout, "%s\tprivate key\n", b64);
 
 	if (base64_ntop(pubkey, sizeof(pubkey), b64, sizeof(b64)) != 44)
 		errx(1, "b64_ntop");
 
-	fprintf(stdout, "pubkey\t%s\n", b64);
+	fprintf(stdout, "%s\tpublic key\n", b64);
 
 	arc4random_buf(privkey, sizeof(privkey));
 
 	if (base64_ntop(privkey, sizeof(privkey), b64, sizeof(b64)) != 44)
 		errx(1, "b64_ntop");
 
-	fprintf(stdout, "psk\t%s\n", b64);
+	fprintf(stdout, "%s\tpre-shared key\n", b64);
 
 	explicit_bzero(privkey, sizeof(privkey));
 	explicit_bzero(pubkey, sizeof(pubkey));
