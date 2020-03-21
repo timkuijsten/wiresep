@@ -2698,7 +2698,8 @@ opentunnel(const char *ifname, const char *ifdesc, int setflags)
 	}
 
 	if (ifdesc && strlen(ifdesc) > 0) {
-		strncpy(ifr.ifr_name, ifname, sizeof(ifr.ifr_name));
+		memcpy(ifr.ifr_name, ifname, MIN(sizeof ifr.ifr_name,
+		    strlen(ifname) + 1));
 		ifr.ifr_data = (caddr_t)ifdesc;
 		if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
 			logexitx(1, "socket");

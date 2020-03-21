@@ -115,7 +115,6 @@ entryv:	/* optional */ { $$ = NULL; }
 int
 yylex(void)
 {
-	extern int error;
 	static int prevtoken = 0, nexttoken = 0;
 
 	if (yyd == -1) {

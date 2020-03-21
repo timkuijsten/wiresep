@@ -757,7 +757,6 @@ void
 logexit(int code, const char *msg, ...)
 {
 	va_list ap;
-	int saved_errno = errno;
 
 	va_start(ap, msg);
 	if (background) {
@@ -775,15 +774,12 @@ logexit(int code, const char *msg, ...)
 		exit(code);
 	}
 	va_end(ap);
-
-	errno = saved_errno;
 }
 
 void
 logexitx(int code, const char *msg, ...)
 {
 	va_list ap;
-	int saved_errno = errno;
 
 	va_start(ap, msg);
 	if (background) {
@@ -796,8 +792,6 @@ logexitx(int code, const char *msg, ...)
 		exit(code);
 	}
 	va_end(ap);
-
-	errno = saved_errno;
 }
 
 /*

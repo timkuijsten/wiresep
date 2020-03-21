@@ -106,7 +106,7 @@ antireplay_update(struct antireplay *ar, uint64_t seqnum)
 
 		/* erase next buckets */
 		for (n = 0; n < slide; n++)
-			ar->bitmap[bucket + n + 1 & SEQBUCKMASK] = 0;
+			ar->bitmap[(bucket + n + 1) & SEQBUCKMASK] = 0;
 
 		ar->maxseqnum = seqnum;
 	}

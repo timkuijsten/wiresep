@@ -138,10 +138,11 @@ static uint8_t tmpempty[0 + TAGLEN], tmpts[12 + TAGLEN],
 static void
 hmac(wskey out, const struct iovec *iovin, size_t iovinlen, const wskey key)
 {
-	 /* struct */ blake2s_state state;
-	u_int8_t 	x_key[BLAKE2S_BLOCKBYTES] = {0};
-	u_int8_t 	i_hash[BLAKE2S_OUTBYTES];
-	int 		i;
+	/* struct */ blake2s_state state;
+	u_int8_t x_key[BLAKE2S_BLOCKBYTES] = {0};
+	u_int8_t i_hash[BLAKE2S_OUTBYTES];
+	size_t n;
+	int i;
 
 	memcpy(x_key, key, BLAKE2S_KEYBYTES);
 
@@ -150,7 +151,7 @@ hmac(wskey out, const struct iovec *iovin, size_t iovinlen, const wskey key)
 
 	blake2s_init(&state, BLAKE2S_OUTBYTES);
 	blake2s_update(&state, x_key, BLAKE2S_BLOCKBYTES);
-	for (size_t n = 0; n < iovinlen; n++)
+	for (n = 0; n < iovinlen; n++)
 		blake2s_update(&state, iovin[n].iov_base, iovin[n].iov_len);
 	blake2s_final(&state, i_hash, BLAKE2S_OUTBYTES);
 
