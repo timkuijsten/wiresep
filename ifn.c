@@ -237,7 +237,7 @@ handlesig(int signo)
 		doterm = 1;
 		break;
 	default:
-		logwarnx("unexpected signal %d %s", signo, strsignal(signo));
+		logwarnx("%s unexpected signal %d %s", ifn->ifname, signo, strsignal(signo));
 		break;
 	}
 }
@@ -246,11 +246,12 @@ static void
 logsessinfo(const char *pre, const struct session *sess)
 {
 	if (sess == NULL) {
-		logwarnx("%s NULL", pre ? pre : "");
+		logwarnx("%s %s NULL", ifn->ifname, pre ? pre : "");
 		return;
 	}
 
-	logwarnx("%s %c %08x:%08x %llu/%llu %lld %lld %s",
+	logwarnx("%s %s %c %08x:%08x %llu/%llu %lld %lld %s",
+	    ifn->ifname,
 	    pre ? pre : "",
 	    sess->initiator ? 'I' : 'R',
 	    sess->id,
@@ -268,23 +269,23 @@ logpeerinfo(const struct peer *peer)
 	char addrstr[MAXADDRSTR];
 	size_t n;
 
-	logwarnx("peer %u %s", peer->id, peer->name);
-	logwarnx("  sock %d", peer->sock);
+	logwarnx("%s peer %u %s", ifn->ifname, peer->id, peer->name);
+	logwarnx("%s   sock %d", ifn->ifname, peer->sock);
 
 	if (addrtostr(addrstr, sizeof(addrstr), (struct sockaddr *)&peer->fsa,
 	    0) != -1)
-		logwarnx("  fsa %s", addrstr);
+		logwarnx("%s   fsa %s", ifn->ifname, addrstr);
 
-	logwarnx("  allowed ips %zu", peer->allowedipssize);
+	logwarnx("%s   allowed ips %zu", ifn->ifname, peer->allowedipssize);
 	for (n = 0; n < peer->allowedipssize; n++) {
 		if (addrtostr(addrstr, sizeof(addrstr),
 		    (struct sockaddr *)&peer->allowedips[n]->addr, 1) != -1) {
-			logwarnx("  %s/%zu", addrstr,
+			logwarnx("%s   %s/%zu", ifn->ifname, addrstr,
 			    peer->allowedips[n]->prefixlen);
 		}
 	}
 
-	logwarnx("  queue %zu %zu bytes", peer->qpackets, peer->qpacketsdatasz);
+	logwarnx("%s   queue %zu %zu bytes", ifn->ifname, peer->qpackets, peer->qpacketsdatasz);
 
 	logsessinfo("  sess curr", peer->scurr);
 	logsessinfo("  sess prev", peer->sprev);
@@ -296,11 +297,11 @@ ifn_loginfo(void)
 	char addrstr[MAXADDRSTR];
 	size_t n;
 
-	logwarnx("id %u %s", ifn->id, ifn->ifname);
+	logwarnx("%s id %u", ifn->ifname, ifn->id);
 	for (n = 0; n < ifn->ifaddrssize; n++) {
 		if (addrtostr(addrstr, sizeof(addrstr),
 		    (struct sockaddr *)&ifn->ifaddrs[n]->addr, 1) != -1) {
-			logwarnx("ifaddr %s/%zu", addrstr,
+			logwarnx("%s ifaddr %s/%zu", ifn->ifname, addrstr,
 			    ifn->ifaddrs[n]->prefixlen);
 		}
 	}
@@ -308,38 +309,38 @@ ifn_loginfo(void)
 	for (n = 0; n < ifn->laddr6count; n++) {
 		if (addrtostr(addrstr, sizeof(addrstr),
 		    (struct sockaddr *)&ifn->laddr6[n], 0) != -1) {
-			logwarnx("local ip6 %s", addrstr);
+			logwarnx("%s local ip6 %s", ifn->ifname, addrstr);
 		}
 	}
 
 	for (n = 0; n < ifn->laddr4count; n++) {
 		if (addrtostr(addrstr, sizeof(addrstr),
 		    (struct sockaddr *)&ifn->laddr4[n], 0) != -1) {
-			logwarnx("local ip4 %s", addrstr);
+			logwarnx("%s local ip4 %s", ifn->ifname, addrstr);
 		}
 	}
 
 	for (n = 0; n < ifn->peerssize; n++)
 		logpeerinfo(ifn->peers[n]);
 
-	logwarnx("stats packets in/out (errors in/out) [bytes in/out]");
-	logwarnx("  dev   %zu/%zu (%zu/%zu) %zu/%zu", stats.devin, stats.devout,
+	logwarnx("%s stats packets in/out (errors in/out) [bytes in/out]", ifn->ifname);
+	logwarnx("%s   dev   %zu/%zu (%zu/%zu) %zu/%zu", ifn->ifname, stats.devin, stats.devout,
 	    stats.devinerr, stats.devouterr, stats.devinsz, stats.devoutsz);
-	logwarnx("  queue %zu/%zu (%zu/%zu) %zu/%zu", stats.queuein,
+	logwarnx("%s   queue %zu/%zu (%zu/%zu) %zu/%zu", ifn->ifname, stats.queuein,
 	    stats.queueout, stats.queueinerr, stats.queueouterr,
 	    stats.queueinsz, stats.queueoutsz);
-	logwarnx("  sock  %zu/%zu (%zu/%zu) %zu/%zu", stats.sockin,
+	logwarnx("%s   sock  %zu/%zu (%zu/%zu) %zu/%zu", ifn->ifname, stats.sockin,
 	    stats.sockout, stats.sockinerr, stats.sockouterr, stats.sockinsz,
 	    stats.sockoutsz);
-	logwarnx("  init  %zu/%zu (%zu/%zu)", stats.initin, stats.initout,
+	logwarnx("%s   init  %zu/%zu (%zu/%zu)", ifn->ifname, stats.initin, stats.initout,
 	    stats.initinerr, stats.initouterr);
-	logwarnx("  resp  %zu/%zu (%zu/%zu)", stats.respin, stats.respout,
+	logwarnx("%s   resp  %zu/%zu (%zu/%zu)", ifn->ifname, stats.respin, stats.respout,
 	    stats.respinerr, stats.respouterr);
-	logwarnx("  encl  %zu/%zu (%zu/%zu)", stats.enclin, stats.enclout,
+	logwarnx("%s   encl  %zu/%zu (%zu/%zu)", ifn->ifname, stats.enclin, stats.enclout,
 	    stats.enclinerr, stats.enclouterr);
-	logwarnx("  prox  %zu/%zu (%zu/%zu)", stats.proxin, stats.proxout,
+	logwarnx("%s   prox  %zu/%zu (%zu/%zu)", ifn->ifname, stats.proxin, stats.proxout,
 	    stats.proxinerr, stats.proxouterr);
-	logwarnx("  total corrupted/invalid mac/invalid peer %zu/%zu/%zu",
+	logwarnx("%s   total corrupted/invalid mac/invalid peer %zu/%zu/%zu", ifn->ifname,
 	    stats.corrupted, stats.invalidmac, stats.invalidpeer);
 }
 
@@ -382,11 +383,11 @@ assignaddr6(const char *ifname, const struct cidraddr *ca)
 	    MIN(sizeof addreq.ifra_prefixmask, sizeof mask));
 
 	if ((s = socket(AF_INET6, SOCK_DGRAM, 0)) == -1)
-		logexitx(1, "%s socket", __func__);
+		logexitx(1, "%s %s socket", ifn->ifname, __func__);
 	if (ioctl(s, SIOCAIFADDR_IN6, &addreq) == -1)
-		logexit(1, "%s ioctl", __func__);
+		logexit(1, "%s %s ioctl", ifn->ifname, __func__);
 	if (close(s) == -1)
-		logexit(1, "%s close", __func__);
+		logexit(1, "%s %s close", ifn->ifname, __func__);
 
 	return 0;
 }
@@ -427,11 +428,11 @@ assignaddr4(const char *ifname, const struct cidraddr *ca)
 	    MIN(sizeof addreq.ifra_mask, sizeof mask));
 
 	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
-		logexitx(1, "%s socket", __func__);
+		logexitx(1, "%s %s socket", ifn->ifname, __func__);
 	if (ioctl(s, SIOCAIFADDR, &addreq) == -1)
-		logexit(1, "%s ioctl", __func__);
+		logexit(1, "%s %s ioctl", ifn->ifname, __func__);
 	if (close(s) == -1)
-		logexit(1, "%s close", __func__);
+		logexit(1, "%s %s close", ifn->ifname, __func__);
 
 	return 0;
 }
@@ -904,14 +905,14 @@ peerpark(struct peer *peer)
 	 */
 	EV_SET(&ev, peer->sock, EVFILT_READ, EV_DELETE, 0, 0, NULL);
 	if (kevent(kq, &ev, 1, NULL, 0, NULL) == -1 && errno != EBADF)
-		logwarn("%s kevent error", __func__);
+		logwarn("%s %s kevent error", ifn->ifname, __func__);
 
 	if (peer->sockisv6) {
 		if (inet_pton(AF_INET6, "::1", &addr.addr6) != 1)
-			logwarn("inet_pton ::1");
+			logwarn("%s inet_pton ::1", ifn->ifname);
 	} else {
 		if (inet_pton(AF_INET, "127.0.0.1", &addr.addr4) != 1)
-			logwarn("inet_pton 127.0.0.1");
+			logwarn("%s inet_pton 127.0.0.1", ifn->ifname);
 	}
 
 	retries = 0;
@@ -925,29 +926,29 @@ retry:
 
 		if (errno == EADDRINUSE) {
 			if (retries < MAXCONNRETRY) {
-				lognoticex("%s can't connect to localhost port "
-				    "%d, retrying... (%d)", rport, retries + 1);
+				lognoticex("%s %s can't connect to localhost port "
+				    "%d, retrying... (%d)", ifn->ifname, rport, retries + 1);
 
 				sleep(1);
 				retries++;
 				goto retry;
 			}
 
-			logwarn("%s can't connect to localhost port %d, giving "
-			    "up", rport);
+			logwarn("%s %s can't connect to localhost port %d, giving "
+			    "up", ifn->ifname, rport);
 		}
 
 		peer->sock = -1;
 		peer->sockisv6 = 0;
 
-		logwarn("%s %s error", peer->name, __func__);
+		logwarn("%s %s %s error", ifn->ifname, peer->name, __func__);
 
 		return -1;
 	}
 
 	len = sizeof si;
 	if (getsockname(peer->sock, (struct sockaddr *)&si, &len) == -1) {
-		logwarn("%s getsockname error", __func__);
+		logwarn("%s %s getsockname error", ifn->ifname, __func__);
 		peerpark(peer);
 		return -1;
 	}
@@ -955,13 +956,13 @@ retry:
 
 	len = sizeof si;
 	if (getpeername(peer->sock, (struct sockaddr *)&si, &len) == -1) {
-		logwarn("%s getsockname error", __func__);
+		logwarn("%s %s getsockname error", ifn->ifname, __func__);
 		peerpark(peer);
 		return -1;
 	}
 	addrtostr(addrstr2, sizeof(addrstr2), (struct sockaddr *)&si, 0);
 
-	loginfox("parked %s -> %s", addrstr1, addrstr2);
+	loginfox("%s parked %s -> %s", ifn->ifname, addrstr1, addrstr2);
 
 	peer->sock = -1;
 	peer->sockisv6 = 0;
@@ -1017,46 +1018,46 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 	 */
 
 	if (connect(peer->sock, faddr, faddr->sa_len) == -1) {
-		logwarn("connect to remote endpoint failed");
+		logwarn("%s connect to remote endpoint failed", ifn->ifname);
 		return -1;
 	}
 
 	len = sizeof si;
 	if (getsockname(peer->sock, (struct sockaddr *)&si, &len) == -1) {
-		logwarn("%s getsockname error", __func__);
+		logwarn("%s %s getsockname error", ifn->ifname, __func__);
 		peerpark(peer);
 		return -1;
 	}
 
 	port = addrtoport((struct sockaddr *)&si, isv6, lport);
 	if (port != 0 && port != lport) {
-		loginfox("reconnect from the socket with the right port");
+		loginfox("%s reconnect from the socket with the right port", ifn->ifname);
 
 		if (peerpark(peer) == -1)
 			return -1;
 
 		s = findsockbyport(peer, port, isv6);
 		if (s == -1) {
-			logwarnx("%s suggested socket for port %d not found",
+			logwarnx("%s %s suggested socket for port %d not found", ifn->ifname,
 			    __func__, ntohs(port));
 			return -1;
 		}
 
 		if (connect(s, faddr, faddr->sa_len) == -1) {
-			logwarn("reconnect to remote endpoint failed");
+			logwarn("%s reconnect to remote endpoint failed", ifn->ifname);
 			return -1;
 		}
 
 		peer->sock = s;
 		peer->sockisv6 = isv6;
 	} else if (port == 0 && lport != 0) {
-		logwarnx("could not find a suitable local port to connect to "
-		    "remote endpoint, using %d", ntohs(lport));
+		logwarnx("%s could not find a suitable local port to connect to "
+		    "remote endpoint, using %d", ifn->ifname, ntohs(lport));
 	}
 
 	len = sizeof si;
 	if (getsockname(peer->sock, (struct sockaddr *)&si, &len) == -1) {
-		logwarn("%s getsockname error", __func__);
+		logwarn("%s %s getsockname error", ifn->ifname, __func__);
 		peerpark(peer);
 		return -1;
 	}
@@ -1064,17 +1065,17 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 
 	len = sizeof si;
 	if (getpeername(peer->sock, (struct sockaddr *)&si, &len) == -1) {
-		logwarn("%s getsockname error", __func__);
+		logwarn("%s %s getsockname error", ifn->ifname, __func__);
 		peerpark(peer);
 		return -1;
 	}
 	addrtostr(addrstr2, sizeof addrstr2, (struct sockaddr *)faddr, 0);
 
-	loginfox("connected %s -> %s", addrstr1, addrstr2);
+	loginfox("%s connected %s -> %s", ifn->ifname, addrstr1, addrstr2);
 
 	EV_SET(&ev, peer->sock, EVFILT_READ, EV_ADD, 0, 0, NULL);
 	if (kevent(kq, &ev, 1, NULL, 0, NULL) == -1)
-		logexit(1, "%s kevent error", __func__);
+		logexit(1, "%s %s kevent error", ifn->ifname, __func__);
 
 	return 0;
 }
@@ -1097,7 +1098,7 @@ settimer(unsigned int id, utime_t usec)
 	assert(kevent(kq, &ev, 1, NULL, 0, NULL) != -1);
 
 	if (verbose > 1)
-		loginfox("timer %x set to %llu milliseconds", id, usec / 1000);
+		loginfox("%s timer %x set to %llu milliseconds", ifn->ifname, id, usec / 1000);
 }
 
 /*
@@ -1116,7 +1117,7 @@ cleartimer(unsigned int id)
 		return -1;
 
 	if (verbose > 1)
-		loginfox("timer %x cleared", id);
+		loginfox("%s timer %x cleared", ifn->ifname, id);
 
 	return 0;
 }
@@ -1167,16 +1168,16 @@ sessdestroy(struct session *sess)
 	 * calling of this function.
 	 */
 	if (sess->kaset && cleartimer(sess->id) == -1)
-		logwarn("%s cleartimer %x", __func__, sess->id);
+		logwarn("%s %s cleartimer %x", ifn->ifname, __func__, sess->id);
 
 	if (verbose > 1)
-		loginfox("%s %x %zu", __func__, sess->id, sesscounter);
+		loginfox("%s %s %x %zu", ifn->ifname, __func__, sess->id, sesscounter);
 
 	freezero(sess, sizeof(struct session));
 	sesscounter--;
 
 	if (notifyproxy(peerid, sessid, SESSIDDESTROY) == -1)
-		logwarnx("proxy notification of destroyed session id failed");
+		logwarnx("%s proxy notification of destroyed session id failed", ifn->ifname);
 }
 
 /*
@@ -1188,11 +1189,11 @@ sendreqhsinit(struct peer *peer)
 	struct msgreqwginit mri;
 
 	if (makemsgreqwginit(&mri) == -1)
-		logexitx(1, "%s makemsgreqwginit", __func__);
+		logexitx(1, "%s %s makemsgreqwginit", ifn->ifname, __func__);
 
 	if (wire_sendpeeridmsg(eport, peer->id, MSGREQWGINIT, &mri, sizeof(mri))
 	    == -1)
-		logexitx(1, "error sending MSGREQWGINIT to enclave");
+		logexitx(1, "%s error sending MSGREQWGINIT to enclave", ifn->ifname);
 
 	/*
 	 * Since the rekey timer is set by session id, we need one even though
@@ -1230,14 +1231,14 @@ sessactive(const struct session *sess)
 {
 	if (!sess) {
 		if (verbose > 1)
-			loginfox("%s no sess", __func__);
+			loginfox("%s %s no sess", ifn->ifname, __func__);
 
 		return 0;
 	}
 
 	if (sess->expack > 0 && sess->expack < now) {
 		if (verbose > 1)
-			loginfox("%s expected ack too late %llu < %llu",
+			loginfox("%s %s expected ack too late %llu < %llu", ifn->ifname,
 			    __func__, sess->expack, now);
 
 		return 0;
@@ -1245,7 +1246,7 @@ sessactive(const struct session *sess)
 
 	if (REJECT_AFTER_TIME < now - sess->start) {
 		if (verbose > 1)
-			loginfox("%s REJECT_AFTER_TIME %llu", __func__,
+			loginfox("%s %s REJECT_AFTER_TIME %llu", ifn->ifname, __func__,
 			    now - sess->start);
 
 		return 0;
@@ -1253,7 +1254,7 @@ sessactive(const struct session *sess)
 
 	if (REJECT_AFTER_MESSAGES < sess->nextnonce) {
 		if (verbose > 1)
-			loginfox("%s REJECT_AFTER_MESSAGES %llu", __func__,
+			loginfox("%s %s REJECT_AFTER_MESSAGES %llu", ifn->ifname, __func__,
 			    sess->nextnonce);
 
 		return 0;
@@ -1269,7 +1270,7 @@ static void
 sesstentclear(struct peer *peer, int timerset)
 {
 	if (timerset && cleartimer(peer->sesstent.id) == -1)
-		logwarn("%s error %x", __func__, peer->sesstent.id);
+		logwarn("%s %s error %x", ifn->ifname, __func__, peer->sesstent.id);
 
 	peer->sesstent.state = STINACTIVE;
 	peer->sesstent.id = -1;
@@ -1426,7 +1427,7 @@ sendwgdatamsg(int s, uint32_t receiver, uint64_t counter, const uint8_t *packet,
 
 	rc = writev(s, iov, 4);
 	if (rc < DATAHEADERLEN) {
-		logwarn("error sending data to %x", receiver);
+		logwarn("%s error sending data to %x", ifn->ifname, receiver);
 		return -1;
 	}
 
@@ -1455,10 +1456,10 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 	}
 
 	if (verbose > 2)
-		logdebugx("packet size %zu padded %zu", insize, padlen);
+		logdebugx("%s packet size %zu padded %zu", ifn->ifname, insize, padlen);
 
 	if (padlen > outsize) {
-		logwarnx("truncating padded %zu to %zu", padlen, outsize);
+		logwarnx("%s truncating padded %zu to %zu", ifn->ifname, padlen, outsize);
 		padlen = outsize;
 	}
 
@@ -1471,7 +1472,7 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 
 	if (sendwgdatamsg(sess->peer->sock, sess->peerid, sess->nextnonce, out,
 	    outsize) == -1) {
-		logwarnx("error sending data to %s", sess->peer->name);
+		logwarnx("%s error sending data to %s", ifn->ifname, sess->peer->name);
 		return -1;
 	}
 
@@ -1491,7 +1492,7 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 		sess->expack = now + KEEPALIVE_TIMEOUT + REKEY_TIMEOUT;
 
 	if (verbose > 1)
-		loginfox("encapsulated %zu bytes into %zu for %s", padlen,
+		loginfox("%s encapsulated %zu bytes into %zu for %s", ifn->ifname, padlen,
 		    outsize, sess->peer->name);
 
 	/*
@@ -1536,8 +1537,8 @@ decryptpacket(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	*(uint64_t *)&nonce[4] = mwdhdr->counter;
 	if (EVP_AEAD_CTX_open(key, out, &outsize, outsize, nonce,
 	    sizeof(nonce), payload, payloadsize, NULL, 0) == 0) {
-		logwarnx("unauthenticated data received, UDP data: %zu, WG "
-		    "data: %zu, peer session id: counter: %llu", mwdsize,
+		logwarnx("%s unauthenticated data received, UDP data: %zu, WG "
+		    "data: %zu, peer session id: counter: %llu", ifn->ifname, mwdsize,
 		    payloadsize, peersessid, le64toh(mwdhdr->counter));
 		stats.corrupted++;
 		return -1;
@@ -1605,7 +1606,7 @@ forward2tun(uint8_t *frame, size_t framesize, const struct peer *peer)
 	rc = ipsrc2peer(&routedpeer, &addr, ippacket, ippacketsize);
 
 	if (rc == -1) {
-		logwarnx("decrypted packet from %s contains invalid ip packet",
+		logwarnx("%s decrypted packet from %s contains invalid ip packet", ifn->ifname,
 		    peer->name);
 
 		stats.corrupted++;
@@ -1613,15 +1614,15 @@ forward2tun(uint8_t *frame, size_t framesize, const struct peer *peer)
 	}
 
 	if (rc == 0) {
-		logwarnx("ip packet from %s could not be routed", peer->name);
+		logwarnx("%s ip packet from %s could not be routed", ifn->ifname, peer->name);
 
 		stats.invalidpeer++;
 		return -1;
 	}
 
 	if (routedpeer->id != peer->id) {
-		logwarnx("ip packet from %s with a source address of %s "
-		    "received", peer->name, routedpeer->name);
+		logwarnx("%s ip packet from %s with a source address of %s "
+		    "received", ifn->ifname, peer->name, routedpeer->name);
 
 		stats.invalidpeer++;
 		return -1;
@@ -1630,7 +1631,7 @@ forward2tun(uint8_t *frame, size_t framesize, const struct peer *peer)
 	*(uint32_t *)frame = htonl(addr->addr.h.family);
 
 	if (writen(tund, frame, framesize) != 0) {
-		logwarn("writen tund");
+		logwarn("%s writen tund", ifn->ifname);
 		stats.devouterr++;
 		return -1;
 	}
@@ -1655,13 +1656,13 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 
 	if (peer->sessnext.start < now - REJECT_AFTER_TIME) {
 		if (verbose > -1)
-			logwarnx("first packet for next session arrived too "
-			    "late", peer->name);
+			logwarnx("%s first packet for next session arrived too "
+			    "late", ifn->ifname, peer->name);
 
 		if (notifyproxy(peer->id, peer->sessnext.id, SESSIDDESTROY)
 		    == -1)
-			logwarnx("proxy notification that the next session is "
-			    "dead failed");
+			logwarnx("%s proxy notification that the next session is "
+			    "dead failed", ifn->ifname);
 
 		sessnextclear(peer, 1);
 
@@ -1684,26 +1685,26 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 		if (forward2tun(out, TUNHDRSIZ + payloadsize, peer) == -1)
 			return -1;
 	} else {
-		loginfox("%s unexpected keepalive at start of next sesssion, "
-		    "payload size %zd", __func__, payloadsize);
+		loginfox("%s %s unexpected keepalive at start of next sesssion, "
+		    "payload size %zd", ifn->ifname, __func__, payloadsize);
 	}
 
 	/* 4. handlewgdatafrompeer part 2/2 */
 	if (makenextcurr(peer) == -1) {
 		if (verbose > -1)
-			logwarnx("could not make next session of %s "
-			    "current", peer->name);
+			logwarnx("%s could not make next session of %s "
+			    "current", ifn->ifname, peer->name);
 
 		stats.invalidpeer++;
 		return -1;
 	}
 
 	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
-		logwarnx("proxy notification that the next session is now the "
-		    "current session failed");
+		logwarnx("%s proxy notification that the next session is now the "
+		    "current session failed", ifn->ifname);
 
 	if (verbose > 1)
-		loginfox("%s: %x %zu bytes", peer->name, peer->scurr->id,
+		loginfox("%s %s: %x %zu bytes", ifn->ifname, peer->name, peer->scurr->id,
 		    payloadsize);
 
 	return 0;
@@ -1723,7 +1724,7 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	ssize_t payloadsize;
 
 	if (!sessactive(sess)) {
-		logwarnx("data for unusable session received %x",
+		logwarnx("%s data for unusable session received %x", ifn->ifname,
 		    le32toh(mwdhdr->receiver));
 		stats.sockinerr++;
 		return -1;
@@ -1733,7 +1734,7 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 
 	if (!antireplay_isnew(&sess->arrecv, counter)) {
 		if (verbose > -1)
-			logwarnx("data replayed %llu %llu", counter,
+			logwarnx("%s data replayed %llu %llu", ifn->ifname, counter,
 			    sess->arrecv.maxseqnum);
 
 		stats.corrupted++;
@@ -1750,7 +1751,7 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	sess->expack = 0;
 
 	if (antireplay_update(&sess->arrecv, counter) == -1) {
-		logwarnx("antireplay_update %llu", counter);
+		logwarnx("%s antireplay_update %llu", ifn->ifname, counter);
 		return -1;
 	}
 
@@ -1783,7 +1784,7 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 		ensurehs(sess->peer);
 
 	if (verbose > 1)
-		loginfox("%s: %x %zd bytes", sess->peer->name, sess->id,
+		loginfox("%s %s: %x %zd bytes", ifn->ifname, sess->peer->name, sess->id,
 		    payloadsize);
 
 	return 0;
@@ -1821,12 +1822,12 @@ handleenclavemsg(void)
 	msgsize = sizeof(msg);
 	if (wire_recvpeeridmsg(eport, &peerid, &mtcode, msg, &msgsize)
 	    == -1)
-		logexitx(1, "wire_recvpeeridmsg eport");
+		logexitx(1, "%s wire_recvpeeridmsg eport", ifn->ifname);
 
 	stats.enclin++;
 
 	if (!findpeer(peerid, &p))
-		logexit(1, "%s invalid peer id from enclave", __func__);
+		logexit(1, "%s %s invalid peer id from enclave", ifn->ifname, __func__);
 
 	switch (mtcode) {
 	case MSGWGINIT:
@@ -1840,20 +1841,20 @@ handleenclavemsg(void)
 			 * succeeds schedule a new timer.
 			 */
 			if (cleartimer(p->sesstent.id) == -1)
-				logwarn("%s rekey timer for %x not set",
+				logwarn("%s %s rekey timer for %x not set", ifn->ifname,
 				    __func__, p->sesstent.id);
 
 			p->sesstent.id = le32toh(mwi->sender);
 
 			rc = write(p->sock, msg, msgsize);
 			if (rc < 0) {
-				logwarn("%s write MSGWGINIT", __func__);
+				logwarn("%s %s write MSGWGINIT", ifn->ifname, __func__);
 				stats.sockouterr++;
 				stats.initouterr++;
 				return -1;
 			}
 			if ((size_t)rc != msgsize) {
-				logwarnx("%s write MSGWGINIT %zd expected %zu",
+				logwarnx("%s %s write MSGWGINIT %zd expected %zu", ifn->ifname,
 				    __func__, rc, msgsize);
 				stats.sockouterr++;
 				stats.initouterr++;
@@ -1869,10 +1870,10 @@ handleenclavemsg(void)
 
 			if (notifyproxy(p->id, p->sesstent.id, SESSIDTENT)
 			    == -1)
-				logwarnx("proxy notification of a new tentative"
-				    " session failed");
+				logwarnx("%s proxy notification of a new tentative"
+				    " session failed", ifn->ifname);
 		} else {
-			lognoticex("WGINIT from enclave not needed, %d %llx %x",
+			lognoticex("%s WGINIT from enclave not needed, %d %llx %x", ifn->ifname,
 			    p->sesstent.state, p->sesstent.id,
 			    le32toh(mwi->sender));
 		}
@@ -1884,8 +1885,8 @@ handleenclavemsg(void)
 
 		if (p->sessnext.state != GOTKEYS) {
 			if (verbose > -1)
-				logwarnx("unexpectedly received wgresp message "
-				    "from the enclave %d", p->sessnext.state);
+				logwarnx("%s unexpectedly received wgresp message "
+				    "from the enclave %d", ifn->ifname, p->sessnext.state);
 
 			stats.sockouterr++;
 			stats.respouterr++;
@@ -1894,9 +1895,9 @@ handleenclavemsg(void)
 
 		if (p->sessnext.peerid != le32toh(mwr->receiver)) {
 			if (verbose > -1)
-				logwarnx("wgresp message from enclave does not "
+				logwarnx("%s wgresp message from enclave does not "
 				    "match last received authenticated "
-				    "response: %llx to %x", p->sessnext.peerid,
+				    "response: %llx to %x", ifn->ifname, p->sessnext.peerid,
 				    le32toh(mwr->receiver));
 
 			stats.sockouterr++;
@@ -1909,13 +1910,13 @@ handleenclavemsg(void)
 
 		rc = write(p->sock, msg, msgsize);
 		if (rc < 0) {
-			logwarn("%s write MSGWGRESP", __func__);
+			logwarn("%s %s write MSGWGRESP", ifn->ifname, __func__);
 			stats.sockouterr++;
 			stats.respouterr++;
 			return -1;
 		}
 		if ((size_t)rc != msgsize) {
-			logwarnx("%s write MSGWGRESP %zd expected %zu",
+			logwarnx("%s %s write MSGWGRESP %zd expected %zu", ifn->ifname,
 			    __func__, rc, msgsize);
 			stats.sockouterr++;
 			stats.respouterr++;
@@ -1925,7 +1926,7 @@ handleenclavemsg(void)
 		stats.sockout++;
 		stats.sockoutsz += msgsize;
 		if (verbose > 2)
-			logdebugx("written MSGWGRESP %zd bytes", rc);
+			logdebugx("%s written MSGWGRESP %zd bytes", ifn->ifname, rc);
 		break;
 	case MSGCONNREQ:
 		mcr = (struct msgconnreq *)msg;
@@ -1939,26 +1940,26 @@ handleenclavemsg(void)
 		if (p->sesstent.id == msk->sessid) {
 			/* 3. handlesesskeys */
 			if (p->sesstent.state != RESPRECVD) {
-				logwarnx("MSGSESSKEYS from enclave for "
-				    "initiator role unexpected");
+				logwarnx("%s MSGSESSKEYS from enclave for "
+				    "initiator role unexpected", ifn->ifname);
 				stats.enclinerr++;
 				return -1;
 			}
 
 			if (maketentcurr(p, msk) == -1) {
-				logwarnx("failed to make tentative session the "
-				    "current session");
+				logwarnx("%s failed to make tentative session the "
+				    "current session", ifn->ifname);
 				stats.sockouterr++;
 				return -1;
 			}
 
 			if (notifyproxy(p->id, p->scurr->id, SESSIDCURR) == -1)
-				logwarnx("proxy notification that the tentative"
+				logwarnx("%s proxy notification that the tentative"
 				    "session is now the current session "
-				    "failed");
+				    "failed", ifn->ifname);
 
 			if (verbose > 1)
-				loginfox("new initiator session %x with %s %x",
+				loginfox("%s new initiator session %x with %s %x", ifn->ifname,
 				    p->scurr->id,
 				    p->scurr->peer->name,
 				    p->scurr->peerid);
@@ -1990,8 +1991,8 @@ handleenclavemsg(void)
 			/* 2. handlekeysfromenclave */
 			if (p->sessnext.state != SNINACTIVE &&
 			    p->sessnext.state != RESPSENT) {
-				logwarnx("MSGSESSKEYS from enclave for "
-				    "responder role unexpected");
+				logwarnx("%s MSGSESSKEYS from enclave for "
+				    "responder role unexpected", ifn->ifname);
 				stats.enclinerr++;
 				return -1;
 			}
@@ -2020,8 +2021,8 @@ handleenclavemsg(void)
 
 			if (notifyproxy(p->id, p->sessnext.id, SESSIDNEXT)
 			    == -1)
-				logwarnx("proxy notification of next session "
-				    "id failed");
+				logwarnx("%s proxy notification of next session "
+				    "id failed", ifn->ifname);
 
 			/*
 			 * Only transmit data using this session as soon as the
@@ -2033,7 +2034,7 @@ handleenclavemsg(void)
 			 */
 
 			if (verbose > 1)
-				loginfox("new responder session %x with %s %x",
+				loginfox("%s new responder session %x with %s %x", ifn->ifname,
 				    p->sessnext.id,
 				    p->name,
 				    p->sessnext.peerid);
@@ -2041,7 +2042,7 @@ handleenclavemsg(void)
 
 		break;
 	default:
-		logexitx(1, "enclave sent an unexpected message %c", mtcode);
+		logexitx(1, "%s enclave sent an unexpected message %c", ifn->ifname, mtcode);
 	}
 
 	return 0;
@@ -2075,7 +2076,7 @@ handletundmsg(void)
 	msgsize = sizeof(msg);
 	rc = read(tund, msg, msgsize);
 	if (rc < 0)
-		logexitx(1, "%s recvfrom tund", __func__);
+		logexitx(1, "%s %s recvfrom tund", ifn->ifname, __func__);
 
 	msgsize = rc;
 
@@ -2085,7 +2086,7 @@ handletundmsg(void)
 	/* expect at least a tunnel and ip header */
 	if (rc < TUNHDRSIZ + MINIPHDR) {
 		if (verbose > 1)
-			loginfox("%s empty message received", __func__);
+			loginfox("%s %s empty message received", ifn->ifname, __func__);
 		stats.devinerr++;
 		return -1;
 	}
@@ -2095,14 +2096,14 @@ handletundmsg(void)
 	switch(ntohl(*(uint32_t *)msg)) {
 	case AF_INET6:
 		if (msgsize < TUNHDRSIZ + MINIP6HDR)
-			logwarnx("invalid ipv6 packet");
+			logwarnx("%s invalid ipv6 packet", ifn->ifname);
 		ip6hdr = (struct ip6_hdr *)&msg[TUNHDRSIZ];
 		if (!peerbyroute6(&p, &addr, &ip6hdr->ip6_dst)) {
 			if (inet_ntop(AF_INET6, &ip6hdr->ip6_dst, (char *)msg,
 			    sizeof msg) == NULL)
-				logwarn("%s inet_ntop error", __func__);
+				logwarn("%s %s inet_ntop error", ifn->ifname, __func__);
 
-			lognoticex("no route to %s", msg);
+			lognoticex("%s no route to %s", ifn->ifname, msg);
 
 			errno = EHOSTUNREACH;
 			stats.devinerr++;
@@ -2111,10 +2112,10 @@ handletundmsg(void)
 		break;
 	case AF_INET:
 		if (msgsize < TUNHDRSIZ + MINIP4HDR)
-			logwarnx("invalid ipv4 packet");
+			logwarnx("%s invalid ipv4 packet", ifn->ifname);
 		ip4 = (struct ip *)&msg[TUNHDRSIZ];
 		if (!peerbyroute4(&p, &addr, &ip4->ip_dst)) {
-			lognoticex("no route to %s", inet_ntoa(ip4->ip_dst));
+			lognoticex("%s no route to %s", ifn->ifname, inet_ntoa(ip4->ip_dst));
 
 
 			errno = EHOSTUNREACH;
@@ -2124,19 +2125,19 @@ handletundmsg(void)
 		break;
 	default:
 		if (verbose > -1)
-			logwarnx("invalid message from interface %d %zu",
+			logwarnx("%s invalid message from interface %d %zu", ifn->ifname,
 			    ntohl(*(uint32_t *)msg), msgsize);
 		stats.devinerr++;
 		return -1;
 	}
 
 	if (verbose > 1)
-		loginfox("packet for %s, using %x", p->name,
+		loginfox("%s packet for %s, using %x", ifn->ifname, p->name,
 		    p->scurr == NULL ? 0x0 : p->scurr->id);
 
 	if (p->sock == -1) {
 		errno = EDESTADDRREQ;
-		logwarn("peer not connected");
+		logwarn("%s peer not connected", ifn->ifname);
 		stats.sockouterr++;
 		return -1;
 	}
@@ -2146,7 +2147,7 @@ handletundmsg(void)
 		    msgsize - TUNHDRSIZ, p->scurr);
 	} else {
 		if (p->qpackets >= MAXQUEUEPACKETS) {
-			logwarnx("%s queue full %zu packets", __func__,
+			logwarnx("%s %s queue full %zu packets", ifn->ifname, __func__,
 			    p->qpackets);
 			stats.sockouterr++;
 			stats.queueinerr++;
@@ -2155,7 +2156,7 @@ handletundmsg(void)
 
 		if ((MAXQUEUEPACKETSDATASZ - (msgsize - TUNHDRSIZ)) <
 		    p->qpacketsdatasz) {
-			logwarnx("%s queue full %zu bytes", __func__,
+			logwarnx("%s %s queue full %zu bytes", ifn->ifname, __func__,
 			    p->qpacketsdatasz);
 			stats.sockouterr++;
 			stats.queueinerr++;
@@ -2163,7 +2164,7 @@ handletundmsg(void)
 		}
 
 		if ((qp = malloc(sizeof(*qp))) == NULL) {
-			logwarnx("%s malloc failed %zu", __func__, sizeof(*qp));
+			logwarnx("%s %s malloc failed %zu", ifn->ifname, __func__, sizeof(*qp));
 			stats.sockouterr++;
 			stats.queueinerr++;
 			return -1;
@@ -2172,7 +2173,7 @@ handletundmsg(void)
 		qp->datasize = msgsize - TUNHDRSIZ;
 
 		if ((qp->data = malloc(qp->datasize)) == NULL) {
-			logwarnx("%s malloc failed %zu", __func__,
+			logwarnx("%s %s malloc failed %zu", ifn->ifname, __func__,
 			    qp->datasize);
 			free(qp);
 			stats.sockouterr++;
@@ -2207,8 +2208,8 @@ handlewgdata(struct msgwgdatahdr *mwdhdr, size_t msgsize, struct peer *p)
 	receiver = le32toh(mwdhdr->receiver);
 	if (receiver == p->sessnext.id) {
 		if (p->sessnext.state != RESPSENT) {
-			logwarnx("data received for next session while"
-			    " in unexpected state %x %d", receiver,
+			logwarnx("%s data received for next session while"
+			    " in unexpected state %x %d", ifn->ifname, receiver,
 			    p->sessnext.state);
 			stats.sockinerr++;
 			return -1;
@@ -2223,7 +2224,7 @@ handlewgdata(struct msgwgdatahdr *mwdhdr, size_t msgsize, struct peer *p)
 		    p->sprev);
 	}
 
-	logwarnx("data with unknown session received %x", receiver);
+	logwarnx("%s data with unknown session received %x", ifn->ifname, receiver);
 	stats.sockinerr++;
 	return -1;
 }
@@ -2253,7 +2254,7 @@ handlesocketmsg(struct peer *p)
 
 	rc = read(p->sock, msg, sizeof(msg));
 	if (rc < 0) {
-		logwarn("%s read error", __func__);
+		logwarn("%s %s read error", ifn->ifname, __func__);
 		stats.sockinerr++;
 		peerpark(p);
 		return -1;
@@ -2266,14 +2267,14 @@ handlesocketmsg(struct peer *p)
 
 	if (rc < 1) {
 		if (verbose > 1)
-			loginfox("%s empty read", __func__);
+			loginfox("%s %s empty read", ifn->ifname, __func__);
 		stats.sockinerr++;
 		return -1;
 	}
 
 	mtcode = msg[0];
 	if (mtcode >= MTNCODES) {
-		logwarnx("%s unexpected message code got %d",
+		logwarnx("%s %s unexpected message code got %d", ifn->ifname,
 		    __func__, mtcode);
 		stats.sockinerr++;
 		return -1;
@@ -2281,13 +2282,13 @@ handlesocketmsg(struct peer *p)
 
 	if (msgtypes[mtcode].varsize) {
 		if (msgsize < msgtypes[mtcode].size) {
-			logwarnx("expected at least %zu bytes instead of %zu",
+			logwarnx("%s expected at least %zu bytes instead of %zu", ifn->ifname,
 			    msgtypes[mtcode].size, msgsize);
 			stats.sockinerr++;
 			return -1;
 		}
 	} else if (msgsize != msgtypes[mtcode].size) {
-		logwarnx("%s expected message size %zu, got %zu",
+		logwarnx("%s %s expected message size %zu, got %zu", ifn->ifname,
 		    __func__, msgtypes[mtcode].size, msgsize);
 		stats.sockinerr++;
 		return -1;
@@ -2299,8 +2300,8 @@ handlesocketmsg(struct peer *p)
 		stats.initin++;
 
 		if (now - p->sessnext.lastvrfyinit < REKEY_TIMEOUT) {
-			logwarnx("%s is flooding us with wginit messages, "
-			    "previous wginit only %dms ago", p->name,
+			logwarnx("%s %s is flooding us with wginit messages, "
+			    "previous wginit only %dms ago", ifn->ifname, p->name,
 			    now - p->sessnext.lastvrfyinit);
 			stats.sockinerr++;
 			stats.initinerr++;
@@ -2310,7 +2311,7 @@ handlesocketmsg(struct peer *p)
 		mwi = (struct msgwginit *)msg;
 		if (!ws_validmac(mwi->mac1, sizeof(mwi->mac1), mwi,
 		    MAC1OFFSETINIT, ifn->mac1key)) {
-			logwarnx("MSGWGINIT invalid mac1");
+			logwarnx("%s MSGWGINIT invalid mac1", ifn->ifname);
 			stats.sockinerr++;
 			stats.initinerr++;
 			stats.invalidmac++;
@@ -2323,7 +2324,7 @@ handlesocketmsg(struct peer *p)
 		 */
 		if (wire_sendpeeridmsg(eport, p->id, MSGWGINIT, mwi,
 		    sizeof(*mwi)) == -1)
-			logexitx(1, "wire_sendpeeridmsg MSGWGINIT");
+			logexitx(1, "%s wire_sendpeeridmsg MSGWGINIT", ifn->ifname);
 		break;
 	case MSGWGRESP:
 		/* 2. handlewgrespfrompeer */
@@ -2335,7 +2336,7 @@ handlesocketmsg(struct peer *p)
 		     p->sesstent.state == RESPRECVD)) {
 			if (!ws_validmac(mwr->mac1, sizeof(mwr->mac1), mwr,
 			    MAC1OFFSETRESP, ifn->mac1key)) {
-				logwarnx("MSGWGRESP invalid mac1");
+				logwarnx("%s MSGWGRESP invalid mac1", ifn->ifname);
 				stats.sockinerr++;
 				stats.respinerr++;
 				stats.invalidmac++;
@@ -2344,20 +2345,20 @@ handlesocketmsg(struct peer *p)
 
 			if (wire_sendpeeridmsg(eport, p->id, MSGWGRESP, mwr,
 			    sizeof(*mwr)) == -1)
-				logexitx(1, "wire_sendpeeridmsg MSGWGRESP");
+				logexitx(1, "%s wire_sendpeeridmsg MSGWGRESP", ifn->ifname);
 
 		     p->sesstent.state = RESPRECVD;
 		     return 0;
 		}
 
-		lognoticex("wgresp from peer too late or unknown receiver %x",
+		lognoticex("%s wgresp from peer too late or unknown receiver %x", ifn->ifname,
 			    le32toh(mwr->receiver));
 			stats.sockinerr++;
 			stats.respinerr++;
 			return -1;
 		break;
 	case MSGWGCOOKIE:
-		logwarnx("%s cookies are unsupported", __func__);
+		logwarnx("%s %s cookies are unsupported", ifn->ifname, __func__);
 		break;
 	case MSGWGDATA:
 		/* 4. handlewgdatafrompeer part 1/2 */
@@ -2366,7 +2367,7 @@ handlesocketmsg(struct peer *p)
 
 		break;
 	default:
-		logwarnx("received unknown message type %d", msg[0]);
+		logwarnx("%s received unknown message type %d", ifn->ifname, msg[0]);
 		stats.sockinerr++;
 		return -1;
 	}
@@ -2395,12 +2396,12 @@ handleproxymsg(void)
 	msgsize = sizeof(msg);
 	if (wire_recvproxymsg(pport, &ifnid, &lsa, &fsa, &mtcode, msg,
 	    &msgsize) == -1)
-		logexitx(1, "wire_recvproxymsg pport");
+		logexitx(1, "%s wire_recvproxymsg pport", ifn->ifname);
 
 	stats.proxin++;
 
 	if (ifnid != ifn->id) {
-		logwarnx("unknown interface id from proxy: %d", ifnid);
+		logwarnx("%s unknown interface id from proxy: %d", ifn->ifname, ifnid);
 		stats.proxinerr++;
 		return -1;
 	}
@@ -2409,14 +2410,14 @@ handleproxymsg(void)
 	case MSGWGDATA:
 		mwdhdr = (struct msgwgdatahdr *)msg;
 		if (!findpeerbysessid(le32toh(mwdhdr->receiver), &p)) {
-			logwarnx("invalid session id via proxy");
+			logwarnx("%s invalid session id via proxy", ifn->ifname);
 			stats.proxinerr++;
 			return -1;
 		}
 
 		if (handlewgdata(mwdhdr, msgsize, p) == -1) {
-			logwarnx("data for unusable session received via "
-			    "proxy");
+			logwarnx("%s data for unusable session received via "
+			    "proxy", ifn->ifname);
 			stats.proxinerr++;
 			return -1;
 		}
@@ -2428,7 +2429,7 @@ handleproxymsg(void)
 
 		break;
 	default:
-		logwarnx("proxy sent unknown message %c", mtcode);
+		logwarnx("%s proxy sent unknown message %c", ifn->ifname, mtcode);
 		stats.proxinerr++;
 		return -1;
 	}
@@ -2460,17 +2461,17 @@ sesshandletimeout(struct kevent *ev)
 	struct peer *peer;
 
 	if (verbose > 1)
-		loginfox("handling timer event id %lx", ev->ident);
+		loginfox("%s handling timer event id %lx", ifn->ifname, ev->ident);
 
 	if (!findpeerbysessid(ev->ident, &peer)) {
-		logwarnx("timer with unknown session id went off %lx",
+		logwarnx("%s timer with unknown session id went off %lx", ifn->ifname,
 		    ev->ident);
 		return;
 	}
 
 	if (peer->sesstent.id >= 0 &&
 	    ev->ident == (uint32_t)peer->sesstent.id) {
-		lognoticex("Rekey-Timeout %x %s", peer->sesstent.id,
+		lognoticex("%s Rekey-Timeout %x %s", ifn->ifname, peer->sesstent.id,
 		    peer->name);
 
 		/*
@@ -2481,8 +2482,8 @@ sesshandletimeout(struct kevent *ev)
 		if (peer->sesstent.state >= INITSENT) {
 			if (notifyproxy(peer->id, peer->sesstent.id,
 			    SESSIDDESTROY) == -1)
-				logwarnx("proxy notification of destroyed "
-				    "tentative session id failed");
+				logwarnx("%s proxy notification of destroyed "
+				    "tentative session id failed", ifn->ifname);
 		}
 
 		/*
@@ -2507,17 +2508,17 @@ sesshandletimeout(struct kevent *ev)
 	} else if (peer->sprev && ev->ident == peer->sprev->id) {
 		sess = peer->sprev;
 	} else {
-		logwarnx("timer with unknown session id went off %lx",
+		logwarnx("%s timer with unknown session id went off %lx", ifn->ifname,
 		    ev->ident);
 		return;
 	}
 
-	lognoticex("Keepalive-Timeout %x %s", sess->id, sess->peer->name);
+	lognoticex("%s Keepalive-Timeout %x %s", ifn->ifname, sess->id, sess->peer->name);
 
 	sess->kaset = 0;
 
 	if (encryptandsend(msg, sizeof(msg), NULL, 0, sess) == -1)
-		logwarn("%s encryptandsend error", __func__);
+		logwarn("%s %s encryptandsend error", ifn->ifname, __func__);
 }
 
 /*
@@ -2543,7 +2544,7 @@ ifn_serv(void)
 	int nev, i;
 
 	if ((kq = kqueue()) == -1)
-		logexit(1, "kqueue");
+		logexit(1, "%s kqueue", ifn->ifname);
 
 	/*
 	 * Allocate space for events on eport, pport and tund and future
@@ -2553,17 +2554,17 @@ ifn_serv(void)
 	evsize = 3;
 	maxevsize = evsize + ifn->peerssize * (4 + 1 + 2);
 	if ((ev = calloc(maxevsize, sizeof(*ev))) == NULL)
-		logexit(1, "calloc ev");
+		logexit(1, "%s calloc ev", ifn->ifname);
 
 	EV_SET(&ev[0], eport, EVFILT_READ, EV_ADD, 0, 0, NULL);
 	EV_SET(&ev[1], pport, EVFILT_READ, EV_ADD, 0, 0, NULL);
 	EV_SET(&ev[2], tund, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
 	if (kevent(kq, ev, evsize, NULL, 0, NULL) == -1)
-		logexit(1, "kevent");
+		logexit(1, "%s kevent", ifn->ifname);
 
 	if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
-		logexit(1, "%s clock_gettime", __func__);
+		logexit(1, "%s %s clock_gettime", ifn->ifname, __func__);
 	now = utime(&ts);
 
 	/* Connect to peers with known end-points. */
@@ -2572,8 +2573,8 @@ ifn_serv(void)
 		if ((peer->fsa.h.family == AF_INET6 ||
 		    peer->fsa.h.family == AF_INET) &&
 		    peerconnect(peer, (struct sockaddr *)&peer->fsa) == -1)
-			logwarnx("peerconnect error when connecting to known "
-			    "endpoint");
+			logwarnx("%s peerconnect error when connecting to known "
+			    "endpoint", ifn->ifname);
 	}
 
 	for (;;) {
@@ -2583,49 +2584,49 @@ ifn_serv(void)
 		}
 
 		if (doterm)
-			logexitx(1, "received TERM, shutting down");
+			logexitx(1, "%s received TERM, shutting down", ifn->ifname);
 
 		if ((nev = kevent(kq, NULL, 0, ev, maxevsize, NULL)) == -1) {
 			if (errno == EINTR) {
 				continue;
 			} else {
-				logexit(1, "kevent");
+				logexit(1, "%s kevent", ifn->ifname);
 			}
 		}
 
 		if (nev == 0) {
-			lognoticex("kevent == 0");
+			lognoticex("%s kevent == 0", ifn->ifname);
 			continue;
 		}
 
 		if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
-			logexit(1, "%s clock_gettime", __func__);
+			logexit(1, "%s %s clock_gettime", ifn->ifname, __func__);
 		now = utime(&ts);
 
 		for (i = 0; i < nev; i++) {
 			if (ev[i].filter == EVFILT_TIMER) {
 				if (verbose > 1)
-					loginfox("timer event");
+					loginfox("%s timer event", ifn->ifname);
 
 				/* session timer */
 				sesshandletimeout(&ev[i]);
 			} else if ((int)ev[i].ident == eport) {
 				if (verbose > 1)
-					loginfox("enclave event");
+					loginfox("%s enclave event", ifn->ifname);
 
 				if (handleenclavemsg() == -1)
-					logwarnx("enclave error");
+					logwarnx("%s enclave error", ifn->ifname);
 			} else if ((int)ev[i].ident == tund) {
 				if (verbose > 1)
-					loginfox("tun event");
+					loginfox("%s tun event", ifn->ifname);
 
 				handletundmsg();
 			} else if ((int)ev[i].ident == pport) {
 				if (verbose > 1)
-					loginfox("proxy event");
+					loginfox("%s proxy event", ifn->ifname);
 
 				if (handleproxymsg() == -1)
-					logwarnx("proxy error");
+					logwarnx("%s proxy error", ifn->ifname);
 			} else {
 				/* find peer by socket */
 				/* XXX log(n) */
@@ -2639,10 +2640,10 @@ ifn_serv(void)
 				if (peer) {
 					/* INCOMING DATA */
 					if (verbose > 1)
-						loginfox("socket event");
+						loginfox("%s socket event", ifn->ifname);
 					handlesocketmsg(peer);
 				} else {
-					logwarnx("event undetermined %lx",
+					logwarnx("%s event undetermined %lx", ifn->ifname,
 					    ev[i].ident);
 				}
 			}
@@ -2674,7 +2675,7 @@ opentunnel(const char *ifname, const char *ifdesc, int setflags)
 
 	if (setflags) {
 		if (verbose > 1)
-			loginfox("configuring %s", ifname);
+			loginfox("%s configuring %s", ifn->ifname, ifname);
 
 #ifdef TUNSIFHEAD /* FreeBSD */
 	const int on = 1;
@@ -2694,7 +2695,7 @@ opentunnel(const char *ifname, const char *ifdesc, int setflags)
 			return -1;
 	} else {
 		if (verbose > 1)
-			loginfox("%s is manually configured", ifname);
+			loginfox("%s %s is manually configured", ifn->ifname, ifname);
 	}
 
 	if (ifdesc && strlen(ifdesc) > 0) {
@@ -2702,9 +2703,9 @@ opentunnel(const char *ifname, const char *ifdesc, int setflags)
 		    strlen(ifname) + 1));
 		ifr.ifr_data = (caddr_t)ifdesc;
 		if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
-			logexitx(1, "socket");
+			logexitx(1, "%s socket", ifn->ifname);
 		if (ioctl(s, SIOCSIFDESCR, &ifr) == -1)
-			logexit(1, "%s ioctl SIOCSIFDESCR", __func__);
+			logexit(1, "%s %s ioctl SIOCSIFDESCR", ifn->ifname, __func__);
 		if (close(s) == -1)
 			return -1;
 	}
@@ -2724,7 +2725,7 @@ peernew(uint32_t id, const char *name, size_t nallowedips,
 	struct peer *peer;
 
 	if ((peer = malloc(sizeof(*peer))) == NULL)
-		logexit(1, "%s malloc peer", __func__);
+		logexit(1, "%s %s malloc peer", ifn->ifname, __func__);
 
 	peer->id = id;
 	peer->name = strdup(name);
@@ -2745,7 +2746,7 @@ peernew(uint32_t id, const char *name, size_t nallowedips,
 	peer->allowedips = reallocarray(NULL, peer->allowedipssize,
 	    sizeof *peer->allowedips);
 	if (peer->allowedips == NULL)
-		logexit(1, "reallocarray peer->allowedips error");
+		logexit(1, "%s reallocarray peer->allowedips error", ifn->ifname);
 
 	sesstentclear(peer, 0);
 	sessnextclear(peer, 0);
@@ -2777,13 +2778,13 @@ xaddportsock(struct peer *peer, in_port_t port, int isv6)
 		peer->portsock6 = reallocarray(peer->portsock6,
 		    peer->portsock6count, sizeof(struct portsock));
 		if (peer->portsock6 == NULL)
-			logexit(1, "reallocarray of a new portsock failed");
+			logexit(1, "%s reallocarray of a new portsock failed", ifn->ifname);
 
 		ps = &peer->portsock6[peer->portsock6count - 1];
 		ps->p = port;
 		ps->s = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
 		if (ps->s == -1)
-			logexit(1, "%s socket error", __func__);
+			logexit(1, "%s %s socket error", ifn->ifname, __func__);
 
 		sa = (struct sockaddr *)&src.v6;
 	} else {
@@ -2791,13 +2792,13 @@ xaddportsock(struct peer *peer, in_port_t port, int isv6)
 		peer->portsock4 = reallocarray(peer->portsock4,
 		    peer->portsock4count, sizeof(struct portsock));
 		if (peer->portsock4 == NULL)
-			logexit(1, "reallocarray of a new portsock failed");
+			logexit(1, "%s reallocarray of a new portsock failed", ifn->ifname);
 
 		ps = &peer->portsock4[peer->portsock4count - 1];
 		ps->p = port;
 		ps->s = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
 		if (ps->s == -1)
-			logexit(1, "%s socket error", __func__);
+			logexit(1, "%s %s socket error", ifn->ifname, __func__);
 
 		sa = (struct sockaddr *)&src.v4;
 	}
@@ -2805,20 +2806,20 @@ xaddportsock(struct peer *peer, in_port_t port, int isv6)
 	setsockaddr(sa, NULL, isv6, port);
 
 	if (setsockopt(ps->s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on) == -1)
-		logexit(1, "setsockopt reuseaddr error");
+		logexit(1, "%s setsockopt reuseaddr error", ifn->ifname);
 
 	len = MAXRECVBUF;
 	if (setsockopt(ps->s, SOL_SOCKET, SO_RCVBUF, &len, sizeof len) == -1)
-		logexit(1, "setsockopt rcvbuf error");
+		logexit(1, "%s setsockopt rcvbuf error", ifn->ifname);
 
 	if (bind(ps->s, sa, sa->sa_len) == -1)
-		logexit(1, "%s bind on port %u failed", __func__, ntohs(port));
+		logexit(1, "%s %s bind on port %u failed", ifn->ifname, __func__, ntohs(port));
 
 	/* activate so we can park the socket */
 	peer->sock = ps->s;
 	peer->sockisv6 = isv6;
 	if (peerpark(peer) == -1)
-		logexit(1, "%s peerpark failed", __func__);
+		logexit(1, "%s %s peerpark failed", ifn->ifname, __func__);
 }
 
 /*
@@ -2853,9 +2854,9 @@ recvconfig(int masterport)
 
 	msgsize = sizeof(smsg);
 	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "wire_recvmsg SINIT %d", masterport);
+		logexitx(1, "ifn wire_recvmsg SINIT %d", masterport);
 	if (mtcode != SINIT)
-		logexitx(1, "mtcode SINIT %d", mtcode);
+		logexitx(1, "ifn mtcode SINIT %d", mtcode);
 
 	background = smsg.init.background;
 	verbose = smsg.init.verbose;
@@ -2866,12 +2867,12 @@ recvconfig(int masterport)
 
 	msgsize = sizeof(smsg);
 	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "wire_recvmsg SIFN");
+		logexitx(1, "ifn wire_recvmsg SIFN");
 	if (mtcode != SIFN)
-		logexitx(1, "mtcode SIFN");
+		logexitx(1, "ifn mtcode SIFN");
 
 	if ((ifn = malloc(sizeof(*ifn))) == NULL)
-		logexit(1, "malloc ifn");
+		logexit(1, "ifn malloc error");
 
 	ifn->id = smsg.ifn.ifnid;
 	ifn->peerssize = smsg.ifn.npeers;
@@ -2891,32 +2892,32 @@ recvconfig(int masterport)
 
 	ifn->ifaddrs = calloc(ifn->ifaddrssize, sizeof *ifn->ifaddrs);
 	if (ifn->ifaddrs == NULL)
-		logexit(1, "calloc ifn->ifaddrs");
+		logexit(1, "%s calloc ifn->ifaddrs", ifn->ifname);
 
 	ifn->peers = calloc(ifn->peerssize, sizeof *ifn->peers);
 	if (ifn->peers == NULL)
-		logexit(1, "calloc ifn->peers");
+		logexit(1, "%s calloc ifn->peers", ifn->ifname);
 
 	ifn->laddr6 = calloc(ifn->laddr6count, sizeof *ifn->laddr6);
 	if (ifn->laddr6 == NULL)
-		logexit(1, "calloc ifn->laddr6");
+		logexit(1, "%s calloc ifn->laddr6", ifn->ifname);
 
 	ifn->laddr4 = calloc(ifn->laddr4count, sizeof *ifn->laddr4);
 	if (ifn->laddr4 == NULL)
-		logexit(1, "calloc ifn->laddr4");
+		logexit(1, "%s calloc ifn->laddr4", ifn->ifname);
 
 	/* first receive all interface addresses */
 	for (n = 0; n < ifn->ifaddrssize; n++) {
 		msgsize = sizeof(smsg);
 		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "wire_recvmsg SCIDRADDR");
+			logexitx(1, "%s wire_recvmsg SCIDRADDR", ifn->ifname);
 		if (mtcode != SCIDRADDR)
-			logexitx(1, "mtcode SCIDRADDR");
+			logexitx(1, "%s mtcode SCIDRADDR", ifn->ifname);
 
 		assert(smsg.cidraddr.ifnid == ifn->id);
 
 		if ((ifaddr = malloc(sizeof(*ifaddr))) == NULL)
-			logexit(1, "malloc ifaddr");
+			logexit(1, "%s malloc ifaddr", ifn->ifname);
 
 		ifaddr->prefixlen = smsg.cidraddr.prefixlen;
 		memcpy(&ifaddr->addr, &smsg.cidraddr.addr,
@@ -2944,12 +2945,12 @@ recvconfig(int masterport)
 			    sin->sin_addr.s_addr & ifaddr->v4mask.s_addr;
 
 			if (verbose > 1)
-				loginfox("%s %s/%zu",
+				loginfox("%s %s %s/%zu", ifn->ifname,
 				    ifn->ifname,
 				    inet_ntoa(sin->sin_addr),
 				    ifaddr->prefixlen);
 		} else {
-			logexitx(1, "illegal address family");
+			logexitx(1, "%s illegal address family", ifn->ifname);
 		}
 	}
 
@@ -2957,9 +2958,9 @@ recvconfig(int masterport)
 	for (n = 0; n < ifn->laddr6count; n++) {
 		msgsize = sizeof(smsg);
 		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "wire_recvmsg SCIDRADDR");
+			logexitx(1, "%s wire_recvmsg SCIDRADDR", ifn->ifname);
 		if (mtcode != SCIDRADDR)
-			logexitx(1, "mtcode SCIDRADDR");
+			logexitx(1, "%s mtcode SCIDRADDR", ifn->ifname);
 
 		assert(smsg.cidraddr.ifnid == ifn->id);
 
@@ -2970,9 +2971,9 @@ recvconfig(int masterport)
 	for (n = 0; n < ifn->laddr4count; n++) {
 		msgsize = sizeof(smsg);
 		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "wire_recvmsg SCIDRADDR");
+			logexitx(1, "%s wire_recvmsg SCIDRADDR", ifn->ifname);
 		if (mtcode != SCIDRADDR)
-			logexitx(1, "mtcode SCIDRADDR");
+			logexitx(1, "%s mtcode SCIDRADDR", ifn->ifname);
 
 		assert(smsg.cidraddr.ifnid == ifn->id);
 
@@ -2986,11 +2987,11 @@ recvconfig(int masterport)
 	if (ifn->laddr6count == 0) {
 		ifn->laddr6 = malloc(sizeof *ifn->laddr6);
 		if (ifn->laddr6 == NULL)
-			logexit(1, "malloc error ifn->laddr6");
+			logexit(1, "%s malloc error ifn->laddr6", ifn->ifname);
 		ifn->laddr6count = 1;
 
 		if (inet_pton(AF_INET6, "::1", &inet_addr.addr6) != 1)
-			logexit(1, "inet_pton error ::1");
+			logexit(1, "%s inet_pton error ::1", ifn->ifname);
 
 		setsockaddr((struct sockaddr *)ifn->laddr6, &inet_addr, 1, 0);
 	}
@@ -2998,12 +2999,12 @@ recvconfig(int masterport)
 	if (ifn->laddr4count == 0) {
 		ifn->laddr4 = malloc(sizeof *ifn->laddr4);
 		if (ifn->laddr4 == NULL)
-			logexit(1, "malloc error ifn->laddr4");
+			logexit(1, "%s malloc error ifn->laddr4", ifn->ifname);
 		ifn->laddr4count = 1;
 
 		if (inet_pton(AF_INET, "127.0.0.1", &inet_addr.addr4)
 		    != 1)
-			logexit(1, "inet_pton 127.0.0.1");
+			logexit(1, "%s inet_pton 127.0.0.1", ifn->ifname);
 
 		setsockaddr((struct sockaddr *)ifn->laddr4, &inet_addr, 0, 0);
 	}
@@ -3012,27 +3013,27 @@ recvconfig(int masterport)
 	for (m = 0; m < ifn->peerssize; m++) {
 		msgsize = sizeof(smsg);
 		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "wire_recvmsg SPEER");
+			logexitx(1, "%s wire_recvmsg SPEER", ifn->ifname);
 		if (mtcode != SPEER)
-			logexitx(1, "mtcode SPEER");
+			logexitx(1, "%s mtcode SPEER", ifn->ifname);
 
 		assert(smsg.peer.peerid == m);
 
 		if ((peer = peernew(m, smsg.peer.name, smsg.peer.nallowedips,
 		    &smsg.peer.fsa)) == NULL)
-			logexit(1, "peernew %zu", m);
+			logexit(1, "%s peernew %zu", ifn->ifname, m);
 
 		ifn->peers[m] = peer;
 
 		for (n = 0; n < peer->allowedipssize; n++) {
 			if ((allowedip = malloc(sizeof(*allowedip))) == NULL)
-				logexit(1, "malloc allowedip");
+				logexit(1, "%s malloc allowedip", ifn->ifname);
 
 			msgsize = sizeof(smsg);
 			if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-				logexitx(1, "wire_recvmsg SCIDRADDR");
+				logexitx(1, "%s wire_recvmsg SCIDRADDR", ifn->ifname);
 			if (mtcode != SCIDRADDR)
-				logexitx(1, "mtcode SCIDRADDR");
+				logexitx(1, "%s mtcode SCIDRADDR", ifn->ifname);
 
 			assert(smsg.peer.peerid == m);
 
@@ -3050,8 +3051,8 @@ recvconfig(int masterport)
 
 				if (inet_ntop(AF_INET6, &sin6->sin6_addr, addrp,
 				    sizeof(addrp)) == NULL)
-					logexit(1, "inet_ntop on v6 allowedip "
-					    "failed");
+					logexit(1, "%s inet_ntop on v6 allowedip "
+					    "failed", ifn->ifname);
 			} else if (allowedip->addr.h.family == AF_INET) {
 				assert(allowedip->prefixlen <= 32);
 
@@ -3066,15 +3067,15 @@ recvconfig(int masterport)
 
 				if (inet_ntop(AF_INET, &sin->sin_addr, addrp,
 				    sizeof(addrp)) == NULL)
-					logexit(1, "inet_ntop on v4 allowedip "
-					    "failed");
+					logexit(1, "%s inet_ntop on v4 allowedip "
+					    "failed", ifn->ifname);
 			} else {
-				logexitx(1, "%s allowedip unknown address family",
+				logexitx(1, "%s %s allowedip unknown address family", ifn->ifname,
 				    peer->name);
 			}
 
 			if (verbose > 1)
-				loginfox("%s allowedip %s/%zu", peer->name,
+				loginfox("%s %s allowedip %s/%zu", ifn->ifname, peer->name,
 				    addrp, allowedip->prefixlen);
 		}
 
@@ -3125,12 +3126,12 @@ recvconfig(int masterport)
 					if (inet_ntop(AF_INET6,
 					    &allowedip->v6addrmasked, addrstr,
 					    sizeof addrstr) == NULL)
-						logexit(1, "%s inet_ntop error",
+						logexit(1, "%s %s inet_ntop error", ifn->ifname,
 						    __func__);
 
-					logexitx(1, "%s: %s/%zu\n",
+					logexitx(1, "%s %s: %s/%zu\n",
 					    "multiple allowedips with the same "
-					    "address and prefixlen",
+					    "address and prefixlen", ifn->ifname,
 					    addrstr, allowedip->prefixlen);
 				}
 			}
@@ -3142,12 +3143,12 @@ recvconfig(int masterport)
 	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
 		logexitx(1, "%s wire_recvmsg SEOS", ifn->ifname);
 	if (mtcode != SEOS)
-		logexitx(1, "mtcode SEOS");
+		logexitx(1, "%s mtcode SEOS", ifn->ifname);
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
 	if (verbose > 1)
-		loginfox("config received from %d", masterport);
+		loginfox("%s config received from %d", ifn->ifname, masterport);
 }
 
 /*
@@ -3173,11 +3174,11 @@ ifn_init(int masterport)
 	    isopenfd(STDERR_FILENO);
 
 	if (!isopenfd(masterport))
-		logexitx(1, "masterport %d", masterport);
+		logexitx(1, "%s masterport %d", ifn->ifname, masterport);
 	if (!isopenfd(eport))
-		logexitx(1, "eport %d", eport);
+		logexitx(1, "%s eport %d", ifn->ifname, eport);
 	if (!isopenfd(pport))
-		logexitx(1, "pport %d", pport);
+		logexitx(1, "%s pport %d", ifn->ifname, pport);
 
 	fdcount += 3;
 
@@ -3187,7 +3188,7 @@ ifn_init(int masterport)
 	}
 
 	if ((size_t)getdtablecount() != fdcount)
-		logexitx(1, "descriptor mismatch: %d %d", getdtablecount(),
+		logexitx(1, "%s descriptor mismatch: %d %d", ifn->ifname, getdtablecount(),
 		    fdcount);
 
 	aead = EVP_aead_chacha20_poly1305();
@@ -3196,12 +3197,12 @@ ifn_init(int masterport)
 
 	if ((tund = opentunnel(ifn->ifname, ifn->ifdesc, ifn->ifaddrssize))
 	    == -1)
-		logexit(1, "opentunnel %s", ifn->ifname);
+		logexit(1, "%s opentunnel", ifn->ifname);
 
 	/* assign addresses */
 	for (n = 0; n < ifn->ifaddrssize; n++) {
 		if (assignaddr(ifn->ifname, ifn->ifaddrs[n]) == -1)
-			logwarn("assignaddr %d %s", n, ifn->ifname);
+			logwarn("%s assignaddr %d", ifn->ifname, n);
 	}
 
 	if (verbose > 1)
@@ -3213,7 +3214,7 @@ ifn_init(int masterport)
 	 */
 
 	if (ifn->peerssize > MAXPEERS)
-		logexit(1, "number of peers exceeds maximum %zu %zu",
+		logexit(1, "%s number of peers exceeds maximum %zu %zu", ifn->ifname,
 		    ifn->peerssize, MAXPEERS);
 
 	heapneeded = MINDATA;
@@ -3246,26 +3247,26 @@ ifn_init(int masterport)
 	sa.sa_handler = handlesig;
 	sa.sa_flags = SA_RESTART;
 	if (sigemptyset(&sa.sa_mask) == -1)
-		logexit(1, "sigemptyset");
+		logexit(1, "%s sigemptyset", ifn->ifname);
 	if (sigaction(SIGUSR1, &sa, NULL) == -1)
-		logexit(1, "sigaction SIGUSR1");
+		logexit(1, "%s sigaction SIGUSR1", ifn->ifname);
 	if (sigaction(SIGTERM, &sa, NULL) == -1)
-		logexit(1, "sigaction SIGTERM");
+		logexit(1, "%s sigaction SIGTERM", ifn->ifname);
 
 	if (chroot(EMPTYDIR) == -1)
-		logexit(1, "chroot %s", EMPTYDIR);
+		logexit(1, "%s chroot %s", ifn->ifname, EMPTYDIR);
 	if (chdir("/") == -1)
-		logexit(1, "chdir");
+		logexit(1, "%s chdir", ifn->ifname);
 
 	if (setgroups(1, &gid) ||
 	    setresgid(gid, gid, gid) ||
 	    setresuid(uid, uid, uid))
-		logexit(1, "%s: cannot drop privileges", __func__);
+		logexit(1, "%s %s: cannot drop privileges", ifn->ifname, __func__);
 
 	if (pledge("stdio inet", "") == -1)
-		logexit(1, "pledge");
+		logexit(1, "%s pledge", ifn->ifname);
 
 	/* let proxy know we have connected all sockets */
 	if (write(pport, &ifn->id, sizeof ifn->id) == -1)
-		logexit(1, "write error ifn %u to proxy", ifn->id);
+		logexit(1, "%s write error ifn %u to proxy", ifn->ifname, ifn->id);
 }
