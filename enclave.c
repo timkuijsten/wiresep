@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2018, 2019 Tim Kuijsten
+ * Copyright (c) 2018, 2019, 2020 Tim Kuijsten
  *
  * Permission to use, copy, modify, and distribute this software for any purpose
  * with or without fee is hereby granted, provided that the above copyright
@@ -177,7 +177,8 @@ handlesig(int signo)
 		doterm = 1;
 		break;
 	default:
-		logwarnx("enclave unexpected signal %d %s", signo, strsignal(signo));
+		logwarnx("enclave unexpected signal %d %s", signo,
+		    strsignal(signo));
 		break;
 	}
 }
@@ -507,8 +508,8 @@ upgradehsinit(struct ifn *ifn, struct msgwginit *mwi, struct peer **peer,
 		*peer = p;
 	} else {
 		n = sizeof(mwi->stat);
-		if (aead(mwi->stat, &n, ifn->pubkey, sizeof(ifn->pubkey), k, tmph,
-		    0) == -1)
+		if (aead(mwi->stat, &n, ifn->pubkey, sizeof(ifn->pubkey), k,
+		    tmph, 0) == -1)
 			return -1;
 	}
 
@@ -530,7 +531,8 @@ upgradehsinit(struct ifn *ifn, struct msgwginit *mwi, struct peer **peer,
 			return -1;
 
 		if (memcmp(tmpts, (*peer)->recvts, sizeof(tmpts)) <= 0) {
-			logwarnx("enclave %s hsinit replayed", __func__);
+			logwarnx("enclave %s %x received init message is "
+			    "replayed", ifn->ifname, hs->sessid);
 			return -1;
 		}
 
@@ -580,7 +582,8 @@ createhsinit(struct peer *peer, struct msgwginit *mwi)
 		return -1;
 
 	if (upgradehsinit(peer->ifn, mwi, &peer, 0) == -1) {
-		logwarnx("enclave %s upgradehsinit", __func__);
+		logwarnx("enclave %s %x could not upgrade new init message",
+		    peer->ifn->ifname, hs->sessid);
 		return -1;
 	}
 
@@ -710,7 +713,8 @@ createhsresp(struct peer *peer, struct msgwgresp *mwr,
 	X25519_keypair(mwr->ephemeral, hs->epriv);
 
 	if (upgradehsresp(hs, mwr, 1) == -1) {
-		logwarnx("enclave %s upgradehsresp", __func__);
+		logwarnx("enclave %s %x could not upgrade response message",
+		    peer->ifn->ifname, hs->sessid);
 		return -1;
 	}
 
@@ -746,25 +750,31 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 	struct msgsesskeys msk;
 	struct msgwgresp *mwr;
 	struct msgwginit *mwi;
+	uint32_t sender;
 
 	mwi = (struct msgwginit *)msg;
+	sender = le32toh(mwi->sender);
+
 	if (!ws_validmac(mwi->mac1, sizeof(mwi->mac1), mwi, MAC1OFFSETINIT,
 	    ifn->mac1key)) {
 		if (peer) {
-			logwarnx("enclave peer %u: packet with invalid mac received",
+			logwarnx("enclave %s /%x/ init message with invalid mac"
+			    " received from peer %u", ifn->ifname, sender,
 			    peer->id);
 		} else {
-			logwarnx("enclave packet with invalid mac received");
+			logwarnx("enclave %s /%x/ init message with invalid mac"
+			    " received from peer", ifn->ifname, sender);
 		}
 		return -1;
 	}
 	if (upgradehsinit(ifn, mwi, &peer, 1) == -1) {
 		if (peer) {
-			logwarnx("enclave peer %u: unauthenticated initiation "
-			    "received for %s: ", peer->id, ifn->ifname);
+			logwarnx("enclave %s /%x/ could not authenticate init "
+			    "message from peer %u", ifn->ifname, sender,
+			    peer->id);
 		} else {
-			logwarnx("enclave unauthenticated initiation received for %s",
-			    ifn->ifname);
+			logwarnx("enclave %s /%x/ could not authenticate init "
+			    "message from peer", ifn->ifname, sender);
 		}
 		return -1;
 	}
@@ -772,42 +782,48 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 	/* Overwrite msg mwi with mwr */
 	mwr = (struct msgwgresp *)msg;
 	if (createhsresp(peer, mwr, mwi) == -1) {
-		logwarnx("enclave %s createhsresp", __func__);
+		logwarnx("enclave %s %x could not create response message for "
+		    "peer %u", ifn->ifname, sender, peer->id);
 		return -1;
 	}
 
 	if (fsn && lsn) {
-		/* send MSGCONNREQ */
 		if (makemsgconnreq(&mcr, fsn, lsn) == -1)
-			logexitx(1, "enclave %s makemsgconnreq", __func__);
+			logexitx(1, "enclave %s %x makemsgconnreq error for "
+			    "peer %u", ifn->ifname, sender, peer->id);
 		if (wire_sendpeeridmsg(ifn->port, peer->id, MSGCONNREQ, &mcr,
 		    sizeof(mcr)) == -1) {
-			logwarnx("enclave %s error sending MSGCONNREQ to %s", __func__,
-			    ifn->ifname);
+			logwarnx("enclave %s %x error sending connect request "
+			    "for peer %u to ifn", ifn->ifname, sender,
+			    peer->id);
 			return -1;
 		}
 	}
 
-	/* send MSGSESSKEYS to ifn */
 	if (makemsgsesskeys(&msk, peer->hs, 1) == -1)
-		logexitx(1, "enclave %s makemsgsesskeys", __func__);
+		logexitx(1, "enclave %s %x makemsgsesskeys error for peer %u",
+		    ifn->ifname, sender, peer->id);
 
 	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGSESSKEYS, &msk,
 	    sizeof(msk)) == -1) {
-		logwarnx("enclave %s error sending MSGSESSKEYS to %s", __func__,
-		    ifn->ifname);
+		logwarnx("enclave %s %x error sending keys for peer %u to ifn",
+		    ifn->ifname, sender, peer->id);
 		return -1;
 	}
 
 	explicit_bzero(&msk, sizeof(msk));
 
-	/* send MSGWGRESP to ifn */
 	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGWGRESP, mwr,
 	    sizeof(*mwr)) == -1) {
-		logwarnx("enclave %s error sending MSGWGRESP to %s", __func__,
-		    ifn->ifname);
+		logwarnx("enclave %s %x error sending response message for peer"
+		    " %u to ifn", ifn->ifname, sender, peer->id);
 		return -1;
 	}
+
+	if (verbose > 1)
+		loginfox("enclave %s %x sent response message for peer %u to "
+		    "ifn, new sender session %x", ifn->ifname, sender, peer->id,
+		    le32toh(mwr->sender));
 
 	return 0;
 }
@@ -836,54 +852,80 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 	struct msgsesskeys msk;
 	struct msgwgresp *mwr;
 	struct peer *p;
+	uint32_t receiver;
 
 	mwr = (struct msgwgresp *)msg;
+	receiver = le32toh(mwr->receiver);
+
 	if (!ws_validmac(mwr->mac1, sizeof(mwr->mac1), mwr, MAC1OFFSETRESP,
 	    ifn->mac1key)) {
-		logwarnx("enclave %s invalid mac1 MSGWGRESP", __func__);
+		if (peer) {
+			logwarnx("enclave %s /%x/ response message with invalid "
+			    "mac received from peer %u", ifn->ifname, receiver,
+			    peer->id);
+		} else {
+			logwarnx("enclave %s /%x/ response message with invalid "
+			    "mac received from peer", ifn->ifname, receiver);
+		}
 		return -1;
 	}
+
 	if (!findifnpeerbysessid(&p, ifn, mwr->receiver)) {
-		logwarnx("enclave %s findifnpeerbysessid", __func__);
+		if (peer) {
+			logwarnx("enclave %s /%x/ receiver in response message "
+			    "from peer %u is unknown", ifn->ifname, receiver,
+			    peer->id);
+		} else {
+			logwarnx("enclave %s /%x/ receiver in response message "
+			    "from peer is unknown", ifn->ifname, receiver);
+		}
 		return -1;
 	}
+
 	/* verify the authenticated packet came in on the right socket */
 	if (peer && peer->id != p->id) {
-		logwarnx("enclave %s authenticated packet received on wrong connected"
-		    " socket", __func__);
+		logwarnx("enclave %s /%x/ response message received from peer %u "
+		    "designated for peer %u, discarding", ifn->ifname, receiver,
+		    p->id, peer->id);
 		return -1;
 	}
 	peer = p;
+
 	if (upgradehsresp(peer->hs, mwr, 0) == -1) {
-		logwarnx("enclave peer %u: unauthenticated response received",
-		    peer->id);
+		logwarnx("enclave %s /%x/ response message received from peer %u "
+		    "could not be authenticated", ifn->ifname, receiver, p->id);
 		return -1;
 	}
 
 	peer->hs->peersessid = le32toh(mwr->sender);
 
 	if (fsn && lsn) {
-		/* send MSGCONNREQ */
 		if (makemsgconnreq(&mcr, fsn, lsn) == -1)
-			logexitx(1, "enclave %s makemsgconnreq", __func__);
+			logexitx(1, "enclave %s %x makemsgconnreq error for "
+			    "peer %u", ifn->ifname, receiver, peer->id);
 		if (wire_sendpeeridmsg(ifn->port, peer->id, MSGCONNREQ, &mcr,
 		    sizeof(mcr)) == -1) {
-			logwarnx("enclave %s error sending MSGCONNREQ to %s", __func__,
-			    ifn->ifname);
+			logwarnx("enclave %s %x error sending connect request "
+			    "for peer %u to ifn", ifn->ifname, receiver,
+			    peer->id);
 			return -1;
 		}
 	}
 
-	/* send MSGSESSKEYS to ifn */
 	if (makemsgsesskeys(&msk, peer->hs, 0) == -1)
-		logexitx(1, "enclave %s makemsgsesskeys", __func__);
+		logexitx(1, "enclave %s %x makemsgsesskeys error for peer %u",
+		    ifn->ifname, receiver, peer->id);
 
 	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGSESSKEYS, &msk,
 	    sizeof(msk)) == -1) {
-		logwarnx("enclave %s error sending MSGSESSKEYS to %s", __func__,
-		    ifn->ifname);
+		logwarnx("enclave %s %x error sending keys for peer %u to ifn",
+		    ifn->ifname, receiver, peer->id);
 		return -1;
 	}
+
+	if (verbose > 1)
+		loginfox("enclave %s %x sent new session keys for peer %u to "
+		    "ifn", ifn->ifname, receiver, peer->id);
 
 	explicit_bzero(&msk, sizeof(msk));
 
@@ -908,6 +950,7 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 static int
 handleifnmsg(const struct ifn *ifn)
 {
+	struct msgwginit *mwi;
 	struct peer *peer;
 	size_t msgsize;
 	uint32_t peerid;
@@ -916,41 +959,42 @@ handleifnmsg(const struct ifn *ifn)
 	msgsize = sizeof(msg);
 	if (wire_recvpeeridmsg(ifn->port, &peerid, &mtcode, msg, &msgsize)
 	    == -1) {
-		logwarnx("enclave wire_recvpeeridmsg %s", ifn->ifname);
+		logwarnx("enclave %s read error", ifn->ifname);
 		return -1;
 	}
 
 	if (!findifnpeerbyid(&peer, ifn, peerid)) {
-		logwarnx("enclave %s unknown peer id from ifn %s", __func__,
-		    ifn->ifname);
+		logwarnx("enclave %s unknown peer id %u", ifn->ifname, peerid);
 		return -1;
 	}
 
 	switch (mtcode) {
 	case MSGWGINIT:
-		if (handlewginit(peer->ifn, peer, NULL, NULL) == -1)
-			return -1;
-		break;
+		return handlewginit(peer->ifn, peer, NULL, NULL);
 	case MSGWGRESP:
-		if (handlewgresp(peer->ifn, peer, NULL, NULL) == -1)
-			return -1;
-		break;
+		return handlewgresp(peer->ifn, peer, NULL, NULL);
 	case MSGREQWGINIT:
-		if (createhsinit(peer, (struct msgwginit *)msg) == -1) {
-			logwarnx("enclave createhsinit");
+		mwi = (struct msgwginit *)msg;
+		if (createhsinit(peer, mwi) == -1) {
+			logwarnx("enclave %s unable to create a new init "
+			    "message for peer %u", ifn->ifname, peer->id);
 			return -1;
 		}
 
 		if (wire_sendpeeridmsg(ifn->port, peerid, MSGWGINIT, msg,
 		    sizeof(struct msgwginit)) == -1) {
-			logwarnx("enclave wire_sendpeeridmsg MSGWGINIT");
+			logwarnx("enclave %s %x error sending init message "
+			    "for peer %u to ifn", ifn->ifname,
+			    le32toh(mwi->sender), peer->id);
 			return -1;
 		}
-		if (verbose > 0)
-			lognoticex("enclave sent MSGWGINIT to %s", ifn->ifname);
+		if (verbose > 1)
+			loginfox("enclave %s %x sent init message for peer %u "
+			    "to ifn", ifn->ifname, le32toh(mwi->sender),
+			    peer->id);
 		break;
 	default:
-		logwarnx("enclave wire_recvifnmsg unknown message from %s: %d",
+		logwarnx("enclave %s message from ifn of unknown type %d",
 		    ifn->ifname, mtcode);
 		return -1;
 	}
@@ -985,7 +1029,7 @@ handleproxymsg(void)
 	msgsize = sizeof(msg);
 	if (wire_recvproxymsg(pport, &ifnid, &lsn, &fsn, &mtcode, msg, &msgsize)
 	    == -1) {
-		logwarnx("enclave %s wire_recvproxymsg", __func__);
+		logwarnx("enclave read proxy message error");
 		return -1;
 	}
 
@@ -997,18 +1041,12 @@ handleproxymsg(void)
 
 	switch (mtcode) {
 	case MSGWGINIT:
-		if (handlewginit(ifn, NULL, &fsn, &lsn) == -1)
-			return -1;
-		break;
+		return handlewginit(ifn, NULL, &fsn, &lsn);
 	case MSGWGRESP:
-		if (handlewgresp(ifn, NULL, &fsn, &lsn) == -1) {
-			logwarnx("enclave %s handlewgresp", __func__);
-			return -1;
-		}
-		break;
+		return handlewgresp(ifn, NULL, &fsn, &lsn);
 	default:
-		logwarnx("enclave wire_recvproxymsg unknown message from proxy: %d",
-		    mtcode);
+		logwarnx("enclave %s message from proxy of unknown type %d",
+		    ifn->ifname, mtcode);
 		return -1;
 	}
 
@@ -1032,11 +1070,11 @@ enclave_serv(void)
 	int nev, i;
 
 	if ((kq = kqueue()) == -1)
-		logexit(1, "enclave kqueue");
+		logexit(1, "enclave kqueue error");
 
 	evsize = ifnvsize + 1;
 	if ((ev = calloc(evsize, sizeof(*ev))) == NULL)
-		logexit(1, "enclave calloc ev");
+		logexit(1, "enclave calloc ev error");
 
 	for (n = 0; n < ifnvsize; n++)
 		EV_SET(&ev[n], ifnv[n]->port, EVFILT_READ, EV_ADD, 0, 0, NULL);
@@ -1044,7 +1082,7 @@ enclave_serv(void)
 	EV_SET(&ev[ifnvsize], pport, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
 	if (kevent(kq, ev, evsize, NULL, 0, NULL) == -1)
-		logexit(1, "enclave kevent");
+		logexit(1, "enclave kevent error");
 
 	for (;;) {
 		if (logstats) {
@@ -1058,7 +1096,7 @@ enclave_serv(void)
 			if (errno == EINTR) {
 				continue;
 			} else {
-				logexit(1, "enclave kevent");
+				logexit(1, "enclave kevent error");
 			}
 		}
 
@@ -1071,12 +1109,9 @@ enclave_serv(void)
 					if (verbose > -1)
 						logwarnx("enclave proxy EOF");
 					if (close(pport) == -1)
-						logexit(1, "enclave close");
+						logexit(1, "enclave close error");
 					break;
 				}
-				if (verbose > 1)
-					loginfox("enclave proxy readable");
-
 				handleproxymsg();
 				break;
 			}
@@ -1086,15 +1121,13 @@ enclave_serv(void)
 				if ((int)ev[i].ident == ifnv[n]->port) {
 					if (ev[i].flags & EV_EOF) {
 						if (verbose > -1)
-							logwarnx("enclave %s EOF",
+							logwarnx("enclave %s "
+							    "EOF",
 							    ifnv[n]->ifname);
 						if (close(ifnv[n]->port) == -1)
-							logexit(1, "enclave close");
+							logexit(1, "enclave close error");
 						break;
 					}
-					if (verbose > 1)
-						loginfox("enclave %s readable",
-						    ifnv[n]->ifname);
 					handleifnmsg(ifnv[n]);
 					break;
 				}
@@ -1134,9 +1167,9 @@ recvconfig(int masterport)
 
 	msgsize = sizeof(smsg);
 	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "enclave wire_recvmsg SINIT %d", masterport);
+		logexitx(1, "enclave receive SINIT error %d", masterport);
 	if (mtcode != SINIT)
-		logexitx(1, "enclave mtcode SINIT %d", mtcode);
+		logexitx(1, "enclave SINIT %d != %d", SINIT, mtcode);
 
 	background = smsg.init.background;
 	verbose = smsg.init.verbose;
@@ -1146,17 +1179,17 @@ recvconfig(int masterport)
 	ifnvsize = smsg.init.nifns;
 
 	if ((ifnv = calloc(ifnvsize, sizeof(*ifnv))) == NULL)
-		logexit(1, "enclave calloc ifnv");
+		logexit(1, "enclave calloc ifnv error");
 
 	for (n = 0; n < ifnvsize; n++) {
 		msgsize = sizeof(smsg);
 		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "enclave wire_recvmsg SIFN");
+			logexitx(1, "enclave receive SIFN error");
 		if (mtcode != SIFN)
-			logexitx(1, "enclave mtcode SIFN");
+			logexitx(1, "enclave SIFN %d != %d", SIFN, mtcode);
 
 		if ((ifn = malloc(sizeof(*ifn))) == NULL)
-			logexit(1, "enclave malloc ifn");
+			logexit(1, "enclave malloc ifn error");
 		ifnv[n] = ifn;
 
 		assert(n == smsg.ifn.ifnid);
@@ -1168,7 +1201,7 @@ recvconfig(int masterport)
 
 		if ((ifn->peers = calloc(ifn->peerssize,
 		    sizeof(*ifn->peers))) == NULL)
-			logexit(1, "enclave calloc ifnv->peers");
+			logexit(1, "enclave calloc ifnv->peers error");
 
 		memcpy(ifn->privkey, smsg.ifn.privkey,
 		    MIN(sizeof ifn->privkey, sizeof smsg.ifn.privkey));
@@ -1183,14 +1216,15 @@ recvconfig(int masterport)
 
 		for (m = 0; m < ifn->peerssize; m++) {
 			if ((p = malloc(sizeof(*p))) == NULL)
-				logexit(1, "enclave malloc peer");
+				logexit(1, "enclave malloc peer error");
 
 			msgsize = sizeof(smsg);
 			if (wire_recvmsg(masterport, &mtcode, &smsg,
 			    &msgsize) == -1)
-				logexitx(1, "enclave wire_recvmsg SPEER");
+				logexitx(1, "enclave receive SPEER error");
 			if (mtcode != SPEER)
-				logexitx(1, "enclave mtcode SPEER");
+				logexitx(1, "enclave SPEER %d != %d", SIFN,
+				    mtcode);
 
 			assert(smsg.peer.ifnid == n);
 			assert(smsg.peer.peerid == m);
@@ -1211,7 +1245,7 @@ recvconfig(int masterport)
 			dh(p->dhsecret, ifn->privkey, p->pubkey);
 
 			if ((p->hs = malloc(sizeof(*p->hs))) == NULL)
-				logexit(1, "enclave malloc hs");
+				logexit(1, "enclave malloc p->hs error");
 
 			memset(p->recvts, 0, sizeof(p->recvts));
 			p->hs->peer = p;
@@ -1222,14 +1256,14 @@ recvconfig(int masterport)
 	/* expect end of startup signal */
 	msgsize = sizeof(smsg);
 	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "enclave wire_recvmsg SEOS");
+		logexitx(1, "enclave receive SEOS error");
 	if (mtcode != SEOS)
-		logexitx(1, "enclave mtcode SEOS %d %d", masterport, mtcode);
+		logexitx(1, "enclave SEOS %d != %d", SEOS, mtcode);
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
 	if (verbose > 1)
-		loginfox("enclave config received from %d", masterport);
+		loginfox("enclave config received from master");
 }
 
 /*
@@ -1254,18 +1288,19 @@ enclave_init(int masterport)
 	    isopenfd(STDERR_FILENO);
 
 	if (!isopenfd(masterport))
-		logexitx(1, "enclave masterport %d", masterport);
+		logexitx(1, "enclave masterport not open %d", masterport);
 	if (!isopenfd(pport))
-		logexitx(1, "enclave pport %d", pport);
+		logexitx(1, "enclave proxy port not open %d", pport);
 
 	for (n = 0; n < ifnvsize; n++) {
 		if (!isopenfd(ifnv[n]->port))
-			logexitx(1, "enclave %s port not open, fd %d", ifnv[n]->ifname,
-			    ifnv[n]->port);
+			logexitx(1, "enclave %s port %d not open",
+			    ifnv[n]->ifname, ifnv[n]->port);
 	}
 
 	if ((size_t)getdtablecount() != stdopen + 2 + ifnvsize)
-		logexitx(1, "enclave descriptor mismatch: %d", getdtablecount());
+		logexitx(1, "enclave descriptor mismatch: %d != %zu",
+		    getdtablecount(), stdopen + 2 + ifnvsize);
 
 	/*
 	 * Calculate the amount of dynamic memory we need.
@@ -1279,8 +1314,8 @@ enclave_init(int masterport)
 		nrpeers += ifnv[n]->peerssize;
 
 	if (nrpeers > MAXPEERS)
-		logexit(1, "enclave number of peers exceeds maximum %zu %zu", nrpeers,
-		    MAXPEERS);
+		logexit(1, "enclave number of peers exceeds maximum %zu %d",
+		    nrpeers, MAXPEERS);
 
 	heapneeded = MINDATA;
 	heapneeded += nrpeers * sizeof(struct peer);
@@ -1301,24 +1336,24 @@ enclave_init(int masterport)
 	sa.sa_handler = handlesig;
 	sa.sa_flags = SA_RESTART;
 	if (sigemptyset(&sa.sa_mask) == -1)
-		logexit(1, "enclave sigemptyset");
+		logexit(1, "enclave sigemptyset error");
 	if (sigaction(SIGUSR1, &sa, NULL) == -1)
-		logexit(1, "enclave sigaction SIGUSR1");
+		logexit(1, "enclave sigaction SIGUSR1 error");
 	if (sigaction(SIGTERM, &sa, NULL) == -1)
-		logexit(1, "enclave sigaction SIGTERM");
+		logexit(1, "enclave sigaction SIGTERM error");
 
 	if (chroot(EMPTYDIR) == -1)
-		logexit(1, "enclave chroot %s", EMPTYDIR);
+		logexit(1, "enclave chroot %s error", EMPTYDIR);
 	if (chdir("/") == -1)
-		logexit(1, "enclave chdir");
+		logexit(1, "enclave chdir error");
 
 	if (setgroups(1, &gid) ||
 	    setresgid(gid, gid, gid) ||
 	    setresuid(uid, uid, uid))
-		logexit(1, "enclave %s: cannot drop privileges", __func__);
+		logexit(1, "enclave cannot drop privileges");
 
 	if (pledge("stdio", "") == -1)
-		logexit(1, "enclave pledge");
+		logexit(1, "enclave pledge error");
 }
 
 void
