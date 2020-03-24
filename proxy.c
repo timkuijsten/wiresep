@@ -165,7 +165,7 @@ handlesig(int signo)
 		doterm = 1;
 		break;
 	default:
-		logwarnx("%s unexpected signal %d %s", __func__, signo,
+		logwarnx("proxy %s unexpected signal %d %s", __func__, signo,
 		    strsignal(signo));
 		break;
 	}
@@ -251,14 +251,14 @@ sessmapvreplace(const struct ifn *ifn, struct peer *peer, int64_t oid,
 	ifn->sessmapv[sessidx]->peer = peer;
 
 	if (nid == oid) {
-		loginfox("%s old sessid equals new sessid %x", __func__, oid);
+		loginfox("proxy %s old sessid equals new sessid %x", __func__, oid);
 	} else if (nid > oid) {
-		loginfox("%s replaced %x@%d with %x, resort from index %d (%d)",
+		loginfox("proxy %s replaced %x@%d with %x, resort from index %d (%d)",
 		    __func__, oid, sessidx, nid, sessidx,
 		    ifn->sessmapvsize - sessidx);
 		sort(&ifn->sessmapv[sessidx], ifn->sessmapvsize - sessidx);
 	} else {
-		loginfox("%s replaced %x@%d with %x, resort from index 0 (%d)",
+		loginfox("proxy %s replaced %x@%d with %x, resort from index 0 (%d)",
 		    __func__, oid, sessidx, nid, sessidx + 1);
 		sort(ifn->sessmapv, sessidx + 1);
 	}
@@ -290,12 +290,12 @@ handleifnmsg(const struct sockmap *sockmap)
 	msgsize = sizeof(msg);
 	if (wire_recvpeeridmsg(ifn->port, &peerid, &mtcode, msg, &msgsize)
 	    == -1) {
-		logwarnx("%s wire_recvpeeridmsg %s", __func__, ifn->ifname);
+		logwarnx("proxy %s wire_recvpeeridmsg %s", __func__, ifn->ifname);
 		return -1;
 	}
 
 	if (!findpeerbyidandifn(&peer, peerid, ifn)) {
-		logwarnx("%s unknown peerid from %s: %u", __func__, ifn->ifname,
+		logwarnx("proxy %s unknown peerid from %s: %u", __func__, ifn->ifname,
 		    peerid);
 		return -1;
 	}
@@ -305,7 +305,7 @@ handleifnmsg(const struct sockmap *sockmap)
 		msi = (struct msgsessid *)msg;
 
 		if (verbose > 1)
-			loginfox("%s received %u %x from %s", __func__,
+			loginfox("proxy %s received %u %x from %s", __func__,
 			    msi->type, msi->sessid, ifn->ifname);
 
 		switch (msi->type) {
@@ -319,28 +319,28 @@ handleifnmsg(const struct sockmap *sockmap)
 			} else if (msi->sessid == peer->sessprev) {
 				sessid = &peer->sessprev;
 			} else {
-				logwarnx("%s %s: could not destroy session for "
+				logwarnx("proxy %s %s: could not destroy session for "
 				    "peer %u, session id not found: %x",
 				    __func__, ifn->ifname, peer->id,
 				    msi->sessid);
 				break;
 			}
 			if (sessmapvreplace(ifn, peer, msi->sessid, -1) == -1)
-				logwarn("%s could not remove session id: %x",
+				logwarn("proxy %s could not remove session id: %x",
 				    __func__, msi->sessid);
 			*sessid = -1;
 			break;
 		case SESSIDTENT:
 			if (sessmapvreplace(ifn, peer, peer->sesstent,
 			    msi->sessid) == -1)
-				logwarn("%s could not find tent session id: "
+				logwarn("proxy %s could not find tent session id: "
 				    "%llx", __func__, peer->sesstent);
 			peer->sesstent = msi->sessid;
 			break;
 		case SESSIDNEXT:
 			if (sessmapvreplace(ifn, peer, peer->sessnext,
 			    msi->sessid) == -1)
-				logwarn("%s could not find next session id: "
+				logwarn("proxy %s could not find next session id: "
 				    "%llx", __func__, peer->sessnext);
 			peer->sessnext = msi->sessid;
 			break;
@@ -350,7 +350,7 @@ handleifnmsg(const struct sockmap *sockmap)
 			} else if (msi->sessid == peer->sessnext) {
 				sessid = &peer->sessnext;
 			} else {
-				logwarnx("%s %s: current session for peer %u "
+				logwarnx("proxy %s %s: current session for peer %u "
 				    "was not tentative or next: %x", __func__,
 				    ifn->ifname, peer->id, msi->sessid);
 				break;
@@ -371,7 +371,7 @@ handleifnmsg(const struct sockmap *sockmap)
 			if (peer->sessprev != -1)
 				if (sessmapvreplace(ifn, peer, peer->sessprev,
 				    -1) == -1)
-					logwarn("%s could not find prev session"
+					logwarn("proxy %s could not find prev session"
 					    " id: %llx", __func__,
 					    peer->sessprev);
 
@@ -384,7 +384,7 @@ handleifnmsg(const struct sockmap *sockmap)
 		}
 		break;
 	default:
-		logwarnx("%s unexpected message from %s: %u", __func__,
+		logwarnx("proxy %s unexpected message from %s: %u", __func__,
 		    ifn->ifname, mtcode);
 		return -1;
 	}
@@ -428,7 +428,7 @@ handlesockmsg(const struct sockmap *sockmap)
 	    (struct sockaddr *)&peeraddr, &peeraddrsize);
 	if (rc < 1) {
 		if (verbose > -1)
-			logwarnx("%s recvfrom", __func__);
+			logwarnx("proxy %s recvfrom", __func__);
 		return -1;
 	}
 	msgsize = rc;
@@ -438,27 +438,27 @@ handlesockmsg(const struct sockmap *sockmap)
 
 	mtcode = msg[0];
 	if (mtcode >= MTNCODES) {
-		loginfox("%s unexpected message code got %d", __func__, mtcode);
+		loginfox("proxy %s unexpected message code got %d", __func__, mtcode);
 		corrupted++;
 		return -1;
 	}
 
 	if (msgtypes[mtcode].varsize) {
 		if (msgsize < msgtypes[mtcode].size) {
-			logwarnx("%s expected at least %zu bytes instead of "
+			logwarnx("proxy %s expected at least %zu bytes instead of "
 			    "%zu", __func__, msgtypes[1].size, msgsize);
 			corrupted++;
 			return -1;
 		}
 	} else if (msgsize != msgtypes[mtcode].size) {
-		logwarnx("%s expected message size %zu, got %zu",
+		logwarnx("proxy %s expected message size %zu, got %zu",
 		    __func__, msgtypes[1].size, msgsize);
 		corrupted++;
 		return -1;
 	}
 
 	if (verbose > 1)
-		loginfox("%s received %u for %s", __func__, mtcode,
+		loginfox("proxy %s received %u for %s", __func__, mtcode,
 		    ifn->ifname);
 
 	switch (mtcode) {
@@ -466,14 +466,14 @@ handlesockmsg(const struct sockmap *sockmap)
 		mwi = (struct msgwginit *)msg;
 		if (!ws_validmac(mwi->mac1, sizeof(mwi->mac1), mwi,
 		    MAC1OFFSETINIT, ifn->mac1key)) {
-			logwarnx("%s MSGWGINIT invalid mac1", __func__);
+			logwarnx("proxy %s MSGWGINIT invalid mac1", __func__);
 			invalidmac++;
 			return -1;
 		}
 
 		if (wire_proxysendmsg(eport, ifn->id, sockmap->listenaddr,
 		    &peeraddr, mtcode, msg, msgsize) == -1) {
-			logwarn("%s enclave does not respond", __func__);
+			logwarn("proxy %s enclave does not respond", __func__);
 			return -1;
 		}
 
@@ -484,21 +484,21 @@ handlesockmsg(const struct sockmap *sockmap)
 		mwr = (struct msgwgresp *)msg;
 		if (!findpeerbysessidandifn(&peer, ifn,
 		    le32toh(mwr->receiver))) {
-			loginfox("%s MSGWGRESP unknown receiver %x for %s",
+			loginfox("proxy %s MSGWGRESP unknown receiver %x for %s",
 			    __func__, le32toh(mwr->receiver), ifn->ifname);
 			invalidpeer++;
 			return -1;
 		}
 		if (!ws_validmac(mwr->mac1, sizeof(mwr->mac1), mwr,
 		    MAC1OFFSETRESP, ifn->mac1key)) {
-			logwarnx("%s MSGWGRESP invalid mac1", __func__);
+			logwarnx("proxy %s MSGWGRESP invalid mac1", __func__);
 			invalidmac++;
 			return -1;
 		}
 
 		if (wire_proxysendmsg(eport, ifn->id, sockmap->listenaddr,
 		    &peeraddr, mtcode, msg, msgsize) == -1) {
-			logwarn("%s enclave does not respond", __func__);
+			logwarn("proxy %s enclave does not respond", __func__);
 			return -1;
 		}
 
@@ -512,7 +512,7 @@ handlesockmsg(const struct sockmap *sockmap)
 		mwdhdr = (struct msgwgdatahdr *)msg;
 		if (!findpeerbysessidandifn(&peer, ifn,
 		    le32toh(mwdhdr->receiver))) {
-			loginfox("%s MSGWGDATA unknown receiver %x for %s",
+			loginfox("proxy %s MSGWGDATA unknown receiver %x for %s",
 			    __func__, le32toh(mwdhdr->receiver), ifn->ifname);
 			invalidpeer++;
 			return -1;
@@ -523,7 +523,7 @@ handlesockmsg(const struct sockmap *sockmap)
 
 		if (wire_proxysendmsg(ifn->port, ifn->id, sockmap->listenaddr,
 		    &peeraddr, mtcode, msg, msgsize) == -1) {
-			logwarn("%s %s does not respond", __func__,
+			logwarn("proxy %s %s does not respond", __func__,
 			    ifn->ifname);
 			return -1;
 		}
@@ -535,7 +535,7 @@ handlesockmsg(const struct sockmap *sockmap)
 		break;
 	default:
 		if (verbose > 1)
-			loginfox("%s received unsupported message %d", __func__,
+			loginfox("proxy %s received unsupported message %d", __func__,
 			    mtcode);
 		corrupted++;
 		return -1;
@@ -564,17 +564,17 @@ proxy_serv(void)
 	 */
 
 	if ((kq = kqueue()) == -1)
-		logexit(1, "%s kqueue", __func__);
+		logexit(1, "proxy %s kqueue", __func__);
 
 	evsize = sockmapvsize;
 	if ((ev = calloc(evsize, sizeof(*ev))) == NULL)
-		logexit(1, "%s calloc", __func__);
+		logexit(1, "proxy %s calloc", __func__);
 
 	for (n = 0; n < sockmapvsize; n++)
 		EV_SET(&ev[n], sockmapv[n]->s, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
 	if ((nev = kevent(kq, ev, evsize, NULL, 0, NULL)) == -1)
-		logexit(1, "%s kevent", __func__);
+		logexit(1, "proxy %s kevent", __func__);
 
 	for (;;) {
 		if (logstats) {
@@ -583,29 +583,29 @@ proxy_serv(void)
 		}
 
 		if (doterm)
-			logexitx(1, "%s received TERM, shutting down",
+			logexitx(1, "proxy %s received TERM, shutting down",
 			    __func__);
 
 		if ((nev = kevent(kq, NULL, 0, ev, evsize, NULL)) == -1) {
 			if (errno == EINTR) {
 				continue;
 			} else {
-				logexit(1, "%s kevent", __func__);
+				logexit(1, "proxy %s kevent", __func__);
 			}
 		}
 
 		if (verbose > 2)
-			logdebugx("%s %d events", __func__, nev);
+			logdebugx("proxy %s %d events", __func__, nev);
 
 		for (i = 0; i < nev; i++) {
 			if (!findsockmapbysock(&sockmap, ev[i].ident)) {
 				if (verbose > -1)
-					logwarnx("%s socket event not found: "
+					logwarnx("proxy %s socket event not found: "
 					    "%lu", __func__, ev[i].ident);
 				continue;
 			} else {
 				if (verbose > 1) {
-					loginfox("%s %s event for %s",
+					loginfox("proxy %s %s event for %s",
 					    __func__,
 					    sockmap->listenaddr ? "UDP" : "IPC",
 					    sockmap->ifn->ifname);
@@ -615,11 +615,11 @@ proxy_serv(void)
 			if (sockmap->listenaddr) {
 				if (ev[i].flags & EV_EOF) {
 					if (verbose > -1)
-						logwarnx("%s %s socket EOF",
+						logwarnx("proxy %s %s socket EOF",
 						    __func__,
 						    sockmap->ifn->ifname);
 					if (close(sockmap->s) == -1)
-						logexit(1, "%s close",
+						logexit(1, "proxy %s close",
 						    __func__);
 					break;
 				}
@@ -628,11 +628,11 @@ proxy_serv(void)
 			} else {
 				if (ev[i].flags & EV_EOF) {
 					if (verbose > -1)
-						logwarnx("%s %s EOF",
+						logwarnx("proxy %s %s EOF",
 						    __func__,
 						    sockmap->ifn->ifname);
 					if (close(sockmap->s) == -1)
-						logexit(1, "%s close",
+						logexit(1, "proxy %s close",
 						    __func__);
 					break;
 				}
@@ -671,9 +671,9 @@ recvconfig(int masterport)
 
 	msgsize = sizeof(smsg);
 	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "%s wire_recvmsg SINIT %d", __func__, masterport);
+		logexitx(1, "proxy %s wire_recvmsg SINIT %d", __func__, masterport);
 	if (mtcode != SINIT)
-		logexitx(1, "%s mtcode SINIT %d", __func__, mtcode);
+		logexitx(1, "proxy %s mtcode SINIT %d", __func__, mtcode);
 
 	background = smsg.init.background;
 	verbose = smsg.init.verbose;
@@ -683,17 +683,17 @@ recvconfig(int masterport)
 	ifnvsize = smsg.init.nifns;
 
 	if ((ifnv = calloc(ifnvsize, sizeof(*ifnv))) == NULL)
-		logexit(1, "%s calloc ifnv", __func__);
+		logexit(1, "proxy %s calloc ifnv", __func__);
 
 	for (n = 0; n < ifnvsize; n++) {
 		msgsize = sizeof(smsg);
 		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "%s wire_recvmsg SIFN", __func__);
+			logexitx(1, "proxy %s wire_recvmsg SIFN", __func__);
 		if (mtcode != SIFN)
-			logexitx(1, "%s mtcode SIFN", __func__);
+			logexitx(1, "proxy %s mtcode SIFN", __func__);
 
 		if ((ifn = malloc(sizeof(**ifnv))) == NULL)
-			logexit(1, "%s malloc ifnv[%zu]", __func__, n);
+			logexit(1, "proxy %s malloc ifnv[%zu]", __func__, n);
 
 		assert(smsg.ifn.ifnid == n);
 
@@ -710,12 +710,12 @@ recvconfig(int masterport)
 		ifn->peerssize = smsg.ifn.npeers;
 		if ((ifn->peers = calloc(ifn->peerssize, sizeof(*ifn->peers)))
 		    == NULL)
-			logexit(1, "%s calloc ifnv->peers", __func__);
+			logexit(1, "proxy %s calloc ifnv->peers", __func__);
 
 		for (m = 0; m < ifn->peerssize; m++) {
 			peer = malloc(sizeof(*ifn->peers[m]));
 			if (peer == NULL)
-				logexit(1, "%s malloc peer", __func__);
+				logexit(1, "proxy %s malloc peer", __func__);
 			peer->id = m;
 			peer->sesstent = -1;
 			peer->sessnext = -1;
@@ -725,18 +725,18 @@ recvconfig(int masterport)
 		}
 
 		if (MAXPEERS / 4 < ifn->peerssize)
-			logexitx(1, "%s only %d peers are supported", __func__,
+			logexitx(1, "proxy %s only %d peers are supported", __func__,
 			    MAXPEERS);
 
 		ifn->sessmapvsize = ifn->peerssize * 4;
 		if ((ifn->sessmapv = calloc(ifn->sessmapvsize,
 		    sizeof(*ifn->sessmapv))) == NULL)
-			logexit(1, "%s calloc ifn->sessmapv", __func__);
+			logexit(1, "proxy %s calloc ifn->sessmapv", __func__);
 
 		for (m = 0; m < ifn->sessmapvsize; m++) {
 			sessmap = malloc(sizeof(*ifn->sessmapv[m]));
 			if (sessmap == NULL)
-				logexit(1, "%s malloc sessmap", __func__);
+				logexit(1, "proxy %s malloc sessmap", __func__);
 			sessmap->sessid = -1;
 			sessmap->peer = NULL;
 			ifn->sessmapv[m] = sessmap;
@@ -745,29 +745,29 @@ recvconfig(int masterport)
 		/* receive all server addresses */
 		if ((ifn->listenaddrs = calloc(ifn->listenaddrssize,
 		    sizeof(*ifn->listenaddrs))) == NULL)
-			logexit(1, "%s calloc ifn->listenaddrs", __func__);
+			logexit(1, "proxy %s calloc ifn->listenaddrs", __func__);
 
 		for (m = 0; m < ifn->listenaddrssize; m++) {
 			msgsize = sizeof(smsg);
 			if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize)
 			    == -1)
-				logexitx(1, "%s wire_recvmsg SCIDRADDR",
+				logexitx(1, "proxy %s wire_recvmsg SCIDRADDR",
 				    __func__);
 			if (mtcode != SCIDRADDR)
-				logexitx(1, "%s expected SCIDRADDR %d got %d",
+				logexitx(1, "proxy %s expected SCIDRADDR %d got %d",
 				    __func__, SCIDRADDR, mtcode);
 
 			assert(smsg.cidraddr.ifnid == ifn->id);
 
 			if (smsg.cidraddr.addr.h.family != AF_INET6 &&
 			    smsg.cidraddr.addr.h.family != AF_INET) {
-				logwarnx("%s unsupported address family: %d",
+				logwarnx("proxy %s unsupported address family: %d",
 				    __func__, smsg.cidraddr.addr.h.family);
 				continue;
 			}
 
 			if ((listenaddr = malloc(sizeof(*listenaddr))) == NULL)
-				logexit(1, "%s malloc listenaddr", __func__);
+				logexit(1, "proxy %s malloc listenaddr", __func__);
 
 			memcpy(listenaddr, &smsg.cidraddr.addr,
 			    MIN(sizeof *listenaddr, sizeof smsg.cidraddr.addr));
@@ -781,15 +781,15 @@ recvconfig(int masterport)
 	/* expect end of startup signal */
 	msgsize = sizeof(smsg);
 	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "%s wire_recvmsg", __func__);
+		logexitx(1, "proxy %s wire_recvmsg", __func__);
 	if (mtcode != SEOS)
-		logexitx(1, "%s expected SEOS %d got %d", __func__, SEOS,
+		logexitx(1, "proxy %s expected SEOS %d got %d", __func__, SEOS,
 		    mtcode);
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
 	if (verbose > 1)
-		loginfox("%s config received from %d", __func__, masterport);
+		loginfox("proxy %s config received from %d", __func__, masterport);
 }
 
 /*
@@ -819,18 +819,18 @@ proxy_init(int masterport)
 	    isopenfd(STDERR_FILENO);
 
 	if (!isopenfd(masterport))
-		logexitx(1, "%s masterport %d", __func__, masterport);
+		logexitx(1, "proxy %s masterport %d", __func__, masterport);
 	if (!isopenfd(eport))
-		logexitx(1, "%s eport %d", __func__, eport);
+		logexitx(1, "proxy %s eport %d", __func__, eport);
 
 	for (n = 0; n < ifnvsize; n++) {
 		if (!isopenfd(ifnv[n]->port))
-			logexitx(1, "%s %s port not open, fd %d", __func__,
+			logexitx(1, "proxy %s %s port not open, fd %d", __func__,
 			    ifnv[n]->ifname, ifnv[n]->port);
 	}
 
 	if ((size_t)getdtablecount() != stdopen + 2 + ifnvsize)
-		logexitx(1, "%s descriptor mismatch: %d", __func__,
+		logexitx(1, "proxy %s descriptor mismatch: %d", __func__,
 		    getdtablecount());
 
 	/*
@@ -848,11 +848,11 @@ proxy_init(int masterport)
 		sockmapv = reallocarray(sockmapv, sockmapvsize,
 		    sizeof(*sockmapv));
 		if (sockmapv == NULL)
-			logexit(1, "%s reallocarray error sockmapv", __func__);
+			logexit(1, "proxy %s reallocarray error sockmapv", __func__);
 
 		sockmapv[i] = malloc(sizeof(*sockmapv[i]));
 		if (sockmapv[i] == NULL)
-			logexit(1, "%s malloc sockmapv[i]", __func__);
+			logexit(1, "proxy %s malloc sockmapv[i]", __func__);
 
 		sockmapv[i]->s = ifnv[n]->port;
 		sockmapv[i]->ifn = ifnv[n];
@@ -863,10 +863,10 @@ proxy_init(int masterport)
 		 * send the signal that it has created its sockets.
 		 */
 		if (read(ifnv[n]->port, &ifnid, sizeof ifnid) == -1)
-			logexit(1, "read error proxy to ifn %zu", n);
+			logexit(1, "proxy read error proxy to ifn %zu", n);
 
 		if (ifnid != ifnv[n]->id)
-			logexit(1, "ifn sent unexpected id %zu, got %zu",
+			logexit(1, "proxy ifn sent unexpected id %zu, got %zu",
 			    ifnv[n]->id, ifnid);
 
 		i++;
@@ -875,28 +875,28 @@ proxy_init(int masterport)
 			listenaddr = ifnv[n]->listenaddrs[m];
 			s = socket(listenaddr->h.family, SOCK_DGRAM, 0);
 			if (s == -1)
-				logexit(1, "%s socket listenaddr", __func__);
+				logexit(1, "proxy %s socket listenaddr", __func__);
 
 			if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on,
 			    sizeof on) == -1)
-				logexit(1, "setsockopt reuseaddr error");
+				logexit(1, "proxy setsockopt reuseaddr error");
 
 			len = MAXRECVBUF;
 			if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, &len,
 			    sizeof len) == -1)
-				logexit(1, "setsockopt rcvbuf error");
+				logexit(1, "proxy setsockopt rcvbuf error");
 
 			if (bind(s, (struct sockaddr *)listenaddr,
 			    listenaddr->h.len) == -1) {
 				addrtostr(addrstr, sizeof(addrstr),
 				    (struct sockaddr *)listenaddr, 0);
-				logexit(1, "%s bind failed: %s", __func__,
+				logexit(1, "proxy %s bind failed: %s", __func__,
 				    addrstr);
 			}
 
 			sockmapv[i] = malloc(sizeof(*sockmapv[i]));
 			if (sockmapv[i] == NULL)
-				logexit(1, "%s malloc sockmapv[i]", __func__);
+				logexit(1, "proxy %s malloc sockmapv[i]", __func__);
 
 			sockmapv[i]->s = s;
 			sockmapv[i]->ifn = ifnv[n];
@@ -905,11 +905,11 @@ proxy_init(int masterport)
 
 			addrtostr(addrstr, sizeof(addrstr),
 			    (struct sockaddr *)listenaddr, 0);
-			lognoticex("%s listening %s", __func__, addrstr);
+			lognoticex("proxy %s listening %s", __func__, addrstr);
 		}
 	}
 
-	loginfox("%s server sockets created", __func__);
+	loginfox("proxy %s server sockets created", __func__);
 
 	/*
 	 * Calculate roughly the amount of dynamic memory we need.
@@ -928,7 +928,7 @@ proxy_init(int masterport)
 	}
 
 	if (nrpeers > MAXPEERS)
-		logexit(1, "%s number of peers exceeds maximum %zu %zu",
+		logexit(1, "proxy %s number of peers exceeds maximum %zu %zu",
 		    __func__, nrpeers, MAXPEERS);
 
 	heapneeded = MINDATA;
@@ -952,24 +952,24 @@ proxy_init(int masterport)
 	sa.sa_handler = handlesig;
 	sa.sa_flags = SA_RESTART;
 	if (sigemptyset(&sa.sa_mask) == -1)
-		logexit(1, "%s sigemptyset", __func__);
+		logexit(1, "proxy %s sigemptyset", __func__);
 	if (sigaction(SIGUSR1, &sa, NULL) == -1)
-		logexit(1, "%s sigaction SIGUSR1", __func__);
+		logexit(1, "proxy %s sigaction SIGUSR1", __func__);
 	if (sigaction(SIGTERM, &sa, NULL) == -1)
-		logexit(1, "%s sigaction SIGTERM", __func__);
+		logexit(1, "proxy %s sigaction SIGTERM", __func__);
 
 	if (chroot(EMPTYDIR) == -1)
-		logexit(1, "%s chroot %s", __func__, EMPTYDIR);
+		logexit(1, "proxy %s chroot %s", __func__, EMPTYDIR);
 	if (chdir("/") == -1)
-		logexit(1, "%s chdir", __func__);
+		logexit(1, "proxy %s chdir", __func__);
 
 	if (setgroups(1, &gid) ||
 	    setresgid(gid, gid, gid) ||
 	    setresuid(uid, uid, uid))
-		logexit(1, "%s: cannot drop privileges", __func__);
+		logexit(1, "proxy %s: cannot drop privileges", __func__);
 
 	if (pledge("stdio", "") == -1)
-		logexit(1, "%s pledge", __func__);
+		logexit(1, "proxy %s pledge", __func__);
 }
 
 void
@@ -981,12 +981,12 @@ proxy_loginfo(void)
 
 	for (n = 0; n < ifnvsize; n++) {
 		ifn = ifnv[n];
-		logwarnx("ifn %zu, id %d, port %d, sessmapvsize %zu", n,
+		logwarnx("proxy ifn %zu, id %d, port %d, sessmapvsize %zu", n,
 		    ifn->id, ifn->port, ifn->sessmapvsize);
 
 		for (m = 0; m < ifn->peerssize; m++) {
 			peer = ifn->peers[m];
-			logwarnx("peer %zu session tent/next/curr/prev "
+			logwarnx("proxy peer %zu session tent/next/curr/prev "
 			    "%x/%x/%x/%x",
 			    m,
 			    (uint32_t)peer->sesstent,
@@ -996,12 +996,12 @@ proxy_loginfo(void)
 		}
 
 		for (m = 0; m < ifn->sessmapvsize; m++)
-			logwarnx("%02d %08x", m, (uint32_t)ifn->sessmapv[m]->sessid);
+			logwarnx("proxy %02d %08x", m, (uint32_t)ifn->sessmapv[m]->sessid);
 	}
 
-	logwarnx("total recv %zu %zu bytes", totalrecv, totalrecvsz);
-	logwarnx("fwd ifn %zu %zu bytes", totalfwdifn, totalfwdifnsz);
-	logwarnx("fwd enc %zu %zu bytes", totalfwdenc, totalfwdencsz);
-	logwarnx("corrupted/invalid mac/invalid peer %zu/%zu/%zu",
+	logwarnx("proxy total recv %zu %zu bytes", totalrecv, totalrecvsz);
+	logwarnx("proxy fwd ifn %zu %zu bytes", totalfwdifn, totalfwdifnsz);
+	logwarnx("proxy fwd enc %zu %zu bytes", totalfwdenc, totalfwdencsz);
+	logwarnx("proxy corrupted/invalid mac/invalid peer %zu/%zu/%zu",
 	    corrupted, invalidmac, invalidpeer);
 }
