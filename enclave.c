@@ -788,9 +788,11 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 	}
 
 	if (fsn && lsn) {
-		if (makemsgconnreq(&mcr, fsn, lsn) == -1)
-			logexitx(1, "enclave %s %x makemsgconnreq error for "
+		if (makemsgconnreq(&mcr, fsn, lsn) == -1) {
+			logwarnx("enclave %s %x makemsgconnreq error for "
 			    "peer %u", ifn->ifname, sender, peer->id);
+			exit(1);
+		}
 		if (wire_sendpeeridmsg(ifn->port, peer->id, MSGCONNREQ, &mcr,
 		    sizeof(mcr)) == -1) {
 			logwarnx("enclave %s %x error sending connect request "
@@ -800,9 +802,11 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 		}
 	}
 
-	if (makemsgsesskeys(&msk, peer->hs, 1) == -1)
-		logexitx(1, "enclave %s %x makemsgsesskeys error for peer %u",
+	if (makemsgsesskeys(&msk, peer->hs, 1) == -1) {
+		logwarnx("enclave %s %x makemsgsesskeys error for peer %u",
 		    ifn->ifname, sender, peer->id);
+		exit(1);
+	}
 
 	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGSESSKEYS, &msk,
 	    sizeof(msk)) == -1) {
@@ -900,9 +904,11 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 	peer->hs->peersessid = le32toh(mwr->sender);
 
 	if (fsn && lsn) {
-		if (makemsgconnreq(&mcr, fsn, lsn) == -1)
-			logexitx(1, "enclave %s %x makemsgconnreq error for "
+		if (makemsgconnreq(&mcr, fsn, lsn) == -1) {
+			logwarnx("enclave %s %x makemsgconnreq error for "
 			    "peer %u", ifn->ifname, receiver, peer->id);
+			exit(1);
+		}
 		if (wire_sendpeeridmsg(ifn->port, peer->id, MSGCONNREQ, &mcr,
 		    sizeof(mcr)) == -1) {
 			logwarnx("enclave %s %x error sending connect request "
@@ -912,9 +918,11 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 		}
 	}
 
-	if (makemsgsesskeys(&msk, peer->hs, 0) == -1)
-		logexitx(1, "enclave %s %x makemsgsesskeys error for peer %u",
+	if (makemsgsesskeys(&msk, peer->hs, 0) == -1) {
+		logwarnx("enclave %s %x makemsgsesskeys error for peer %u",
 		    ifn->ifname, receiver, peer->id);
+		exit(1);
+	}
 
 	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGSESSKEYS, &msk,
 	    sizeof(msk)) == -1) {
@@ -1069,34 +1077,43 @@ enclave_serv(void)
 	size_t evsize, n;
 	int nev, i;
 
-	if ((kq = kqueue()) == -1)
-		logexit(1, "enclave kqueue error");
+	if ((kq = kqueue()) == -1) {
+		logwarn("enclave kqueue error");
+		exit(1);
+	}
 
 	evsize = ifnvsize + 1;
-	if ((ev = calloc(evsize, sizeof(*ev))) == NULL)
-		logexit(1, "enclave calloc ev error");
+	if ((ev = calloc(evsize, sizeof(*ev))) == NULL) {
+		logwarn("enclave calloc ev error");
+		exit(1);
+	}
 
 	for (n = 0; n < ifnvsize; n++)
 		EV_SET(&ev[n], ifnv[n]->port, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
 	EV_SET(&ev[ifnvsize], pport, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
-	if (kevent(kq, ev, evsize, NULL, 0, NULL) == -1)
-		logexit(1, "enclave kevent error");
+	if (kevent(kq, ev, evsize, NULL, 0, NULL) == -1) {
+		logwarn("enclave kevent error");
+		exit(1);
+	}
 
 	for (;;) {
 		if (logstats) {
 			logstats = 0;
 		}
 
-		if (doterm)
-			logexitx(1, "enclave received TERM, shutting down");
+		if (doterm) {
+			logwarnx("enclave received TERM, shutting down");
+			exit(1);
+		}
 
 		if ((nev = kevent(kq, NULL, 0, ev, evsize, NULL)) == -1) {
 			if (errno == EINTR) {
 				continue;
 			} else {
-				logexit(1, "enclave kevent error");
+				logwarn("enclave kevent error");
+				exit(1);
 			}
 		}
 
@@ -1108,8 +1125,10 @@ enclave_serv(void)
 				if (ev[i].flags & EV_EOF) {
 					if (verbose > -1)
 						logwarnx("enclave proxy EOF");
-					if (close(pport) == -1)
-						logexit(1, "enclave close error");
+					if (close(pport) == -1) {
+						logwarn("enclave close error");
+						exit(1);
+					}
 					break;
 				}
 				handleproxymsg();
@@ -1124,8 +1143,10 @@ enclave_serv(void)
 							logwarnx("enclave %s "
 							    "EOF",
 							    ifnv[n]->ifname);
-						if (close(ifnv[n]->port) == -1)
-							logexit(1, "enclave close error");
+						if (close(ifnv[n]->port) == -1) {
+							logwarn("enclave close error");
+							exit(1);
+						}
 						break;
 					}
 					handleifnmsg(ifnv[n]);
@@ -1166,10 +1187,14 @@ recvconfig(int masterport)
 		abort();
 
 	msgsize = sizeof(smsg);
-	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "enclave receive SINIT error %d", masterport);
-	if (mtcode != SINIT)
-		logexitx(1, "enclave SINIT %d != %d", SINIT, mtcode);
+	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+		logwarnx("enclave receive SINIT error %d", masterport);
+		exit(1);
+	}
+	if (mtcode != SINIT) {
+		logwarnx("enclave SINIT %d != %d", SINIT, mtcode);
+		exit(1);
+	}
 
 	background = smsg.init.background;
 	verbose = smsg.init.verbose;
@@ -1178,18 +1203,26 @@ recvconfig(int masterport)
 	pport = smsg.init.proxport;
 	ifnvsize = smsg.init.nifns;
 
-	if ((ifnv = calloc(ifnvsize, sizeof(*ifnv))) == NULL)
-		logexit(1, "enclave calloc ifnv error");
+	if ((ifnv = calloc(ifnvsize, sizeof(*ifnv))) == NULL) {
+		logwarn("enclave calloc ifnv error");
+		exit(1);
+	}
 
 	for (n = 0; n < ifnvsize; n++) {
 		msgsize = sizeof(smsg);
-		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "enclave receive SIFN error");
-		if (mtcode != SIFN)
-			logexitx(1, "enclave SIFN %d != %d", SIFN, mtcode);
+		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+			logwarnx("enclave receive SIFN error");
+			exit(1);
+		}
+		if (mtcode != SIFN) {
+			logwarnx("enclave SIFN %d != %d", SIFN, mtcode);
+			exit(1);
+		}
 
-		if ((ifn = malloc(sizeof(*ifn))) == NULL)
-			logexit(1, "enclave malloc ifn error");
+		if ((ifn = malloc(sizeof(*ifn))) == NULL) {
+			logwarn("enclave malloc ifn error");
+			exit(1);
+		}
 		ifnv[n] = ifn;
 
 		assert(n == smsg.ifn.ifnid);
@@ -1200,8 +1233,10 @@ recvconfig(int masterport)
 		ifn->peerssize = smsg.ifn.npeers;
 
 		if ((ifn->peers = calloc(ifn->peerssize,
-		    sizeof(*ifn->peers))) == NULL)
-			logexit(1, "enclave calloc ifnv->peers error");
+		    sizeof(*ifn->peers))) == NULL) {
+			logwarn("enclave calloc ifnv->peers error");
+			exit(1);
+		}
 
 		memcpy(ifn->privkey, smsg.ifn.privkey,
 		    MIN(sizeof ifn->privkey, sizeof smsg.ifn.privkey));
@@ -1215,16 +1250,22 @@ recvconfig(int masterport)
 		    MIN(sizeof ifn->cookiekey, sizeof smsg.ifn.cookiekey));
 
 		for (m = 0; m < ifn->peerssize; m++) {
-			if ((p = malloc(sizeof(*p))) == NULL)
-				logexit(1, "enclave malloc peer error");
+			if ((p = malloc(sizeof(*p))) == NULL) {
+				logwarn("enclave malloc peer error");
+				exit(1);
+			}
 
 			msgsize = sizeof(smsg);
 			if (wire_recvmsg(masterport, &mtcode, &smsg,
-			    &msgsize) == -1)
-				logexitx(1, "enclave receive SPEER error");
-			if (mtcode != SPEER)
-				logexitx(1, "enclave SPEER %d != %d", SIFN,
+			    &msgsize) == -1) {
+				logwarnx("enclave receive SPEER error");
+				exit(1);
+			}
+			if (mtcode != SPEER) {
+				logwarnx("enclave SPEER %d != %d", SIFN,
 				    mtcode);
+				exit(1);
+			}
 
 			assert(smsg.peer.ifnid == n);
 			assert(smsg.peer.peerid == m);
@@ -1244,8 +1285,10 @@ recvconfig(int masterport)
 
 			dh(p->dhsecret, ifn->privkey, p->pubkey);
 
-			if ((p->hs = malloc(sizeof(*p->hs))) == NULL)
-				logexit(1, "enclave malloc p->hs error");
+			if ((p->hs = malloc(sizeof(*p->hs))) == NULL) {
+				logwarn("enclave malloc p->hs error");
+				exit(1);
+			}
 
 			memset(p->recvts, 0, sizeof(p->recvts));
 			p->hs->peer = p;
@@ -1255,10 +1298,14 @@ recvconfig(int masterport)
 
 	/* expect end of startup signal */
 	msgsize = sizeof(smsg);
-	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "enclave receive SEOS error");
-	if (mtcode != SEOS)
-		logexitx(1, "enclave SEOS %d != %d", SEOS, mtcode);
+	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+		logwarnx("enclave receive SEOS error");
+		exit(1);
+	}
+	if (mtcode != SEOS) {
+		logwarnx("enclave SEOS %d != %d", SEOS, mtcode);
+		exit(1);
+	}
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
@@ -1287,20 +1334,28 @@ enclave_init(int masterport)
 	stdopen = isopenfd(STDIN_FILENO) + isopenfd(STDOUT_FILENO) +
 	    isopenfd(STDERR_FILENO);
 
-	if (!isopenfd(masterport))
-		logexitx(1, "enclave masterport not open %d", masterport);
-	if (!isopenfd(pport))
-		logexitx(1, "enclave proxy port not open %d", pport);
-
-	for (n = 0; n < ifnvsize; n++) {
-		if (!isopenfd(ifnv[n]->port))
-			logexitx(1, "enclave %s port %d not open",
-			    ifnv[n]->ifname, ifnv[n]->port);
+	if (!isopenfd(masterport)) {
+		logwarnx("enclave masterport not open %d", masterport);
+		exit(1);
+	}
+	if (!isopenfd(pport)) {
+		logwarnx("enclave proxy port not open %d", pport);
+		exit(1);
 	}
 
-	if ((size_t)getdtablecount() != stdopen + 2 + ifnvsize)
-		logexitx(1, "enclave descriptor mismatch: %d != %zu",
+	for (n = 0; n < ifnvsize; n++) {
+		if (!isopenfd(ifnv[n]->port)) {
+			logwarnx("enclave %s port %d not open",
+			    ifnv[n]->ifname, ifnv[n]->port);
+			exit(1);
+		}
+	}
+
+	if ((size_t)getdtablecount() != stdopen + 2 + ifnvsize) {
+		logwarnx("enclave descriptor mismatch: %d != %zu",
 		    getdtablecount(), stdopen + 2 + ifnvsize);
+		exit(1);
+	}
 
 	/*
 	 * Calculate the amount of dynamic memory we need.
@@ -1313,9 +1368,11 @@ enclave_init(int masterport)
 	for (n = 0; n < ifnvsize; n++)
 		nrpeers += ifnv[n]->peerssize;
 
-	if (nrpeers > MAXPEERS)
-		logexit(1, "enclave number of peers exceeds maximum %zu %d",
+	if (nrpeers > MAXPEERS) {
+		logwarn("enclave number of peers exceeds maximum %zu %d",
 		    nrpeers, MAXPEERS);
+		exit(1);
+	}
 
 	heapneeded = MINDATA;
 	heapneeded += nrpeers * sizeof(struct peer);
@@ -1335,25 +1392,39 @@ enclave_init(int masterport)
 	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
 	sa.sa_handler = handlesig;
 	sa.sa_flags = SA_RESTART;
-	if (sigemptyset(&sa.sa_mask) == -1)
-		logexit(1, "enclave sigemptyset error");
-	if (sigaction(SIGUSR1, &sa, NULL) == -1)
-		logexit(1, "enclave sigaction SIGUSR1 error");
-	if (sigaction(SIGTERM, &sa, NULL) == -1)
-		logexit(1, "enclave sigaction SIGTERM error");
+	if (sigemptyset(&sa.sa_mask) == -1) {
+		logwarn("enclave sigemptyset error");
+		exit(1);
+	}
+	if (sigaction(SIGUSR1, &sa, NULL) == -1) {
+		logwarn("enclave sigaction SIGUSR1 error");
+		exit(1);
+	}
+	if (sigaction(SIGTERM, &sa, NULL) == -1) {
+		logwarn("enclave sigaction SIGTERM error");
+		exit(1);
+	}
 
-	if (chroot(EMPTYDIR) == -1)
-		logexit(1, "enclave chroot %s error", EMPTYDIR);
-	if (chdir("/") == -1)
-		logexit(1, "enclave chdir error");
+	if (chroot(EMPTYDIR) == -1) {
+		logwarn("enclave chroot %s error", EMPTYDIR);
+		exit(1);
+	}
+	if (chdir("/") == -1) {
+		logwarn("enclave chdir error");
+		exit(1);
+	}
 
 	if (setgroups(1, &gid) ||
 	    setresgid(gid, gid, gid) ||
-	    setresuid(uid, uid, uid))
-		logexit(1, "enclave cannot drop privileges");
+	    setresuid(uid, uid, uid)) {
+		logwarn("enclave cannot drop privileges");
+		exit(1);
+	}
 
-	if (pledge("stdio", "") == -1)
-		logexit(1, "enclave pledge error");
+	if (pledge("stdio", "") == -1) {
+		logwarn("enclave pledge error");
+		exit(1);
+	}
 }
 
 void

@@ -337,8 +337,10 @@ main(int argc, char **argv)
 			err(1, "daemonize"); /* might not print to stdout */
 	}
 
-	if (initlog(logfacilitystr) == -1)
-		logexitx(1, "could not init log"); /* not printed if daemon */
+	if (initlog(logfacilitystr) == -1) {
+		logwarnx("could not init log"); /* not printed if daemon */
+		exit(1);
+	}
 
 	/*
 	 *   1. determine public key, mac1key and cookie key of each interface
@@ -357,8 +359,10 @@ main(int argc, char **argv)
 	 */
 
 	/* don't bother to free before exec */
-	if ((oldprogname = strdup(getprogname())) == NULL)
-		logexit(1, "strdup getprogname");
+	if ((oldprogname = strdup(getprogname())) == NULL) {
+		logwarn("strdup getprogname");
+		exit(1);
+	}
 
 	eenv[0] = NULL;
 
@@ -368,27 +372,34 @@ main(int argc, char **argv)
 		 * respectively.
 		 */
 
-		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
-			logexit(1, "socketpair ifnmast %zu", n);
+		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
+			logwarn("socketpair ifnmast %zu", n);
+			exit(1);
+		}
 
 		ifnv[n]->mastwithifn = tmpchan[0];
 		ifnv[n]->ifnwithmast = tmpchan[1];
 
-		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
-			logexit(1, "socketpair ifnencl %zu", n);
+		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
+			logwarn("socketpair ifnencl %zu", n);
+			exit(1);
+		}
 
 		ifnv[n]->enclwithifn = tmpchan[0];
 		ifnv[n]->ifnwithencl = tmpchan[1];
 
-		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
-			logexit(1, "socketpair ifnprox %zu", n);
+		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
+			logwarn("socketpair ifnprox %zu", n);
+			exit(1);
+		}
 
 		ifnv[n]->proxwithifn = tmpchan[0];
 		ifnv[n]->ifnwithprox = tmpchan[1];
 
 		switch (fork()) {
 		case -1:
-			logexit(1, "fork %s", ifnv[n]->ifname);
+			logwarn("fork %s", ifnv[n]->ifname);
+			exit(1);
 		case 0:
 			if (verbose > 0)
 				lognoticex("ifn %s %d", ifnv[n]->ifname,
@@ -404,12 +415,15 @@ main(int argc, char **argv)
 
 			eargs[0] = (char *)getprogname();
 			eargs[1] = "-I";
-			if (asprintf(&eargs[2], "%u", ifnv[n]->ifnwithmast) < 1)
-				logexitx(1, "asprintf");
+			if (asprintf(&eargs[2], "%u", ifnv[n]->ifnwithmast) < 1) {
+				logwarnx("asprintf");
+				exit(1);
+			}
 			/* don't bother to free before exec */
 			eargs[3] = NULL;
 			execvpe(oldprogname, eargs, eenv);
-			logexit(1, "exec ifn");
+			logwarn("exec ifn");
+			exit(1);
 		}
 
 		/* parent */
@@ -424,20 +438,26 @@ main(int argc, char **argv)
 	 * Setup channels between master, proxy and enclave.
 	 */
 
-	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
-		logexit(1, "socketpair");
+	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
+		logwarn("socketpair");
+		exit(1);
+	}
 
 	mastwithencl = tmpchan[0];
 	enclwithmast = tmpchan[1];
 
-	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
-		logexit(1, "socketpair");
+	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
+		logwarn("socketpair");
+		exit(1);
+	}
 
 	mastwithprox = tmpchan[0];
 	proxwithmast = tmpchan[1];
 
-	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1)
-		logexit(1, "socketpair");
+	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
+		logwarn("socketpair");
+		exit(1);
+	}
 
 	enclwithprox = tmpchan[0];
 	proxwithencl = tmpchan[1];
@@ -447,7 +467,8 @@ main(int argc, char **argv)
 	/* fork enclave */
 	switch (fork()) {
 	case -1:
-		logexit(1, "fork enclave");
+		logwarn("fork enclave");
+		exit(1);
 	case 0:
 		if (verbose > 0)
 			lognoticex("enclave %d", getpid());
@@ -466,12 +487,15 @@ main(int argc, char **argv)
 
 		eargs[0] = (char *)getprogname();
 		eargs[1] = "-E";
-		if (asprintf(&eargs[2], "%d", enclwithmast) < 1)
-			logexitx(1, "asprintf");
+		if (asprintf(&eargs[2], "%d", enclwithmast) < 1) {
+			logwarnx("asprintf");
+			exit(1);
+		}
 		/* don't bother to free before exec */
 		eargs[3] = NULL;
 		execvpe(oldprogname, eargs, eenv);
-		logexit(1, "exec enclave");
+		logwarn("exec enclave");
+		exit(1);
 	}
 
 	close(enclwithmast);
@@ -485,7 +509,8 @@ main(int argc, char **argv)
 	/* fork proxy  */
 	switch (fork()) {
 	case -1:
-		logexit(1, "fork proxy");
+		logwarn("fork proxy");
+		exit(1);
 	case 0:
 		if (verbose > 0)
 			lognoticex("proxy %d", getpid());
@@ -500,12 +525,15 @@ main(int argc, char **argv)
 
 		eargs[0] = (char *)getprogname();
 		eargs[1] = "-P";
-		if (asprintf(&eargs[2], "%d", proxwithmast) < 1)
-			logexitx(1, "asprintf");
+		if (asprintf(&eargs[2], "%d", proxwithmast) < 1) {
+			logwarnx("asprintf");
+			exit(1);
+		}
 		/* don't bother to free before exec */
 		eargs[3] = NULL;
 		execvpe(oldprogname, eargs, eenv);
-		logexit(1, "exec proxy");
+		logwarn("exec proxy");
+		exit(1);
 	}
 
 	close(proxwithmast);
@@ -546,29 +574,42 @@ main(int argc, char **argv)
 	 * each ifn descriptor
 	 * ...
 	 */
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, mastmast) == -1)
-		logexit(1, "socketpair mastermaster");
-	if (writen(mastmast[0], &mastwithencl, sizeof(int)) != 0)
-		logexit(1, "could not write enclave descriptor to new master");
-	if (writen(mastmast[0], &mastwithprox, sizeof(int)) != 0)
-		logexit(1, "could not write proxy descriptor to new master");
-	if (writen(mastmast[0], &ifnvsize, sizeof(ifnvsize)) != 0)
-		logexit(1, "could not write ifnvsize to new master");
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, mastmast) == -1) {
+		logwarn("socketpair mastermaster");
+		exit(1);
+	}
+	if (writen(mastmast[0], &mastwithencl, sizeof(int)) != 0) {
+		logwarn("could not write enclave descriptor to new master");
+		exit(1);
+	}
+	if (writen(mastmast[0], &mastwithprox, sizeof(int)) != 0) {
+		logwarn("could not write proxy descriptor to new master");
+		exit(1);
+	}
+	if (writen(mastmast[0], &ifnvsize, sizeof(ifnvsize)) != 0) {
+		logwarn("could not write ifnvsize to new master");
+		exit(1);
+	}
 	for (n = 0; n < ifnvsize; n++) {
-		if (writen(mastmast[0], &ifnv[n]->mastwithifn, sizeof(int)) != 0)
-			logexit(1, "could not pass ifn descriptor to new "
+		if (writen(mastmast[0], &ifnv[n]->mastwithifn, sizeof(int)) != 0) {
+			logwarn("could not pass ifn descriptor to new "
 			    "master");
+			exit(1);
+		}
 	}
 	close(mastmast[0]);
 
 	eargs[0] = (char *)getprogname();
 	eargs[1] = "-M";
-	if (asprintf(&eargs[2], "%u", mastmast[1]) < 1)
-		logexitx(1, "asprintf");
+	if (asprintf(&eargs[2], "%u", mastmast[1]) < 1) {
+		logwarnx("asprintf");
+		exit(1);
+	}
 	/* don't bother to free before exec */
 	eargs[3] = NULL;
 	execvpe(oldprogname, eargs, eenv);
-	logexit(1, "exec master");
+	logwarn("exec master");
+	exit(1);
 }
 
 void

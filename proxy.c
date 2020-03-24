@@ -623,18 +623,24 @@ proxy_serv(void)
 	 * Setup listeners for each IPC and UDP socket.
 	 */
 
-	if ((kq = kqueue()) == -1)
-		logexit(1, "proxy kqueue error");
+	if ((kq = kqueue()) == -1) {
+		logwarn("proxy kqueue error");
+		exit(1);
+	}
 
 	evsize = sockmapvsize;
-	if ((ev = calloc(evsize, sizeof(*ev))) == NULL)
-		logexit(1, "proxy calloc evsize error");
+	if ((ev = calloc(evsize, sizeof(*ev))) == NULL) {
+		logwarn("proxy calloc evsize error");
+		exit(1);
+	}
 
 	for (n = 0; n < sockmapvsize; n++)
 		EV_SET(&ev[n], sockmapv[n]->s, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
-	if ((nev = kevent(kq, ev, evsize, NULL, 0, NULL)) == -1)
-		logexit(1, "proxy kevent error");
+	if ((nev = kevent(kq, ev, evsize, NULL, 0, NULL)) == -1) {
+		logwarn("proxy kevent error");
+		exit(1);
+	}
 
 	for (;;) {
 		if (logstats) {
@@ -642,14 +648,17 @@ proxy_serv(void)
 			logstats = 0;
 		}
 
-		if (doterm)
-			logexitx(1, "proxy received TERM, shutting down");
+		if (doterm) {
+			logwarnx("proxy received TERM, shutting down");
+			exit(1);
+		}
 
 		if ((nev = kevent(kq, NULL, 0, ev, evsize, NULL)) == -1) {
 			if (errno == EINTR) {
 				continue;
 			} else {
-				logexit(1, "proxy kevent error");
+				logwarn("proxy kevent error");
+				exit(1);
 			}
 		}
 
@@ -670,10 +679,12 @@ proxy_serv(void)
 						logwarnx("proxy %s server "
 						    "socket eof",
 						    sockmap->ifn->ifname);
-					if (close(sockmap->s) == -1)
-						logexit(1, "proxy %s close "
+					if (close(sockmap->s) == -1) {
+						logwarn("proxy %s close "
 						    "server socket error",
 						    sockmap->ifn->ifname);
+						exit(1);
+					}
 					break;
 				}
 				handlesockmsg(sockmap);
@@ -684,10 +695,12 @@ proxy_serv(void)
 						logwarnx("proxy %s ipc socket "
 						    "eof",
 						    sockmap->ifn->ifname);
-					if (close(sockmap->s) == -1)
-						logexit(1, "proxy %s close"
+					if (close(sockmap->s) == -1) {
+						logwarn("proxy %s close"
 						    "ipc socket error",
 						    sockmap->ifn->ifname);
+						exit(1);
+					}
 					break;
 				}
 				handleifnmsg(sockmap);
@@ -724,10 +737,14 @@ recvconfig(int masterport)
 	struct sessmap *sessmap;
 
 	msgsize = sizeof(smsg);
-	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "proxy receive SINIT error %d", masterport);
-	if (mtcode != SINIT)
-		logexitx(1, "proxy SINIT %d != %d", SINIT, mtcode);
+	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+		logwarnx("proxy receive SINIT error %d", masterport);
+		exit(1);
+	}
+	if (mtcode != SINIT) {
+		logwarnx("proxy SINIT %d != %d", SINIT, mtcode);
+		exit(1);
+	}
 
 	background = smsg.init.background;
 	verbose = smsg.init.verbose;
@@ -736,18 +753,26 @@ recvconfig(int masterport)
 	eport = smsg.init.enclport;
 	ifnvsize = smsg.init.nifns;
 
-	if ((ifnv = calloc(ifnvsize, sizeof(*ifnv))) == NULL)
-		logexit(1, "proxy calloc ifnv error");
+	if ((ifnv = calloc(ifnvsize, sizeof(*ifnv))) == NULL) {
+		logwarn("proxy calloc ifnv error");
+		exit(1);
+	}
 
 	for (n = 0; n < ifnvsize; n++) {
 		msgsize = sizeof(smsg);
-		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "proxy receive SIFN error");
-		if (mtcode != SIFN)
-			logexitx(1, "proxy SIFN %d != %d", SIFN, mtcode);
+		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+			logwarnx("proxy receive SIFN error");
+			exit(1);
+		}
+		if (mtcode != SIFN) {
+			logwarnx("proxy SIFN %d != %d", SIFN, mtcode);
+			exit(1);
+		}
 
-		if ((ifn = malloc(sizeof(**ifnv))) == NULL)
-			logexit(1, "proxy malloc ifnv[%zu] error", n);
+		if ((ifn = malloc(sizeof(**ifnv))) == NULL) {
+			logwarn("proxy malloc ifnv[%zu] error", n);
+			exit(1);
+		}
 
 		assert(smsg.ifn.ifnid == n);
 
@@ -763,13 +788,17 @@ recvconfig(int masterport)
 
 		ifn->peerssize = smsg.ifn.npeers;
 		if ((ifn->peers = calloc(ifn->peerssize, sizeof(*ifn->peers)))
-		    == NULL)
-			logexit(1, "proxy calloc ifnv->peers error");
+		    == NULL) {
+			logwarn("proxy calloc ifnv->peers error");
+			exit(1);
+		}
 
 		for (m = 0; m < ifn->peerssize; m++) {
 			peer = malloc(sizeof(*ifn->peers[m]));
-			if (peer == NULL)
-				logexit(1, "proxy malloc peer error");
+			if (peer == NULL) {
+				logwarn("proxy malloc peer error");
+				exit(1);
+			}
 			peer->id = m;
 			peer->sesstent = -1;
 			peer->sessnext = -1;
@@ -778,19 +807,25 @@ recvconfig(int masterport)
 			ifn->peers[m] = peer;
 		}
 
-		if (MAXPEERS / 4 < ifn->peerssize)
-			logexitx(1, "proxy only %d peers are supported",
+		if (MAXPEERS / 4 < ifn->peerssize) {
+			logwarnx("proxy only %d peers are supported",
 			    MAXPEERS);
+			exit(1);
+		}
 
 		ifn->sessmapvsize = ifn->peerssize * 4;
 		if ((ifn->sessmapv = calloc(ifn->sessmapvsize,
-		    sizeof(*ifn->sessmapv))) == NULL)
-			logexit(1, "proxy calloc ifn->sessmapv error");
+		    sizeof(*ifn->sessmapv))) == NULL) {
+			logwarn("proxy calloc ifn->sessmapv error");
+			exit(1);
+		}
 
 		for (m = 0; m < ifn->sessmapvsize; m++) {
 			sessmap = malloc(sizeof(*ifn->sessmapv[m]));
-			if (sessmap == NULL)
-				logexit(1, "proxy malloc sessmap error");
+			if (sessmap == NULL) {
+				logwarn("proxy malloc sessmap error");
+				exit(1);
+			}
 			sessmap->sessid = -1;
 			sessmap->peer = NULL;
 			ifn->sessmapv[m] = sessmap;
@@ -798,17 +833,23 @@ recvconfig(int masterport)
 
 		/* receive all server addresses */
 		if ((ifn->listenaddrs = calloc(ifn->listenaddrssize,
-		    sizeof(*ifn->listenaddrs))) == NULL)
-			logexit(1, "proxy calloc ifn->listenaddrs error");
+		    sizeof(*ifn->listenaddrs))) == NULL) {
+			logwarn("proxy calloc ifn->listenaddrs error");
+			exit(1);
+		}
 
 		for (m = 0; m < ifn->listenaddrssize; m++) {
 			msgsize = sizeof(smsg);
 			if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize)
-			    == -1)
-				logexitx(1, "proxy receive SCIDRADDR error");
-			if (mtcode != SCIDRADDR)
-				logexitx(1, "proxy SCIDRADDR %d != %d",
+			    == -1) {
+				logwarnx("proxy receive SCIDRADDR error");
+				exit(1);
+			}
+			if (mtcode != SCIDRADDR) {
+				logwarnx("proxy SCIDRADDR %d != %d",
 				    SCIDRADDR, mtcode);
+				exit(1);
+			}
 
 			assert(smsg.cidraddr.ifnid == ifn->id);
 
@@ -819,8 +860,10 @@ recvconfig(int masterport)
 				continue;
 			}
 
-			if ((listenaddr = malloc(sizeof(*listenaddr))) == NULL)
-				logexit(1, "proxy malloc listenaddr error");
+			if ((listenaddr = malloc(sizeof(*listenaddr))) == NULL) {
+				logwarn("proxy malloc listenaddr error");
+				exit(1);
+			}
 
 			memcpy(listenaddr, &smsg.cidraddr.addr,
 			    MIN(sizeof *listenaddr, sizeof smsg.cidraddr.addr));
@@ -833,10 +876,14 @@ recvconfig(int masterport)
 
 	/* expect end of startup signal */
 	msgsize = sizeof(smsg);
-	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "proxy receive SEOS error");
-	if (mtcode != SEOS)
-		logexitx(1, "proxy SEOS %d != %d", SEOS, mtcode);
+	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+		logwarnx("proxy receive SEOS error");
+		exit(1);
+	}
+	if (mtcode != SEOS) {
+		logwarnx("proxy SEOS %d != %d", SEOS, mtcode);
+		exit(1);
+	}
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
@@ -871,21 +918,29 @@ proxy_init(int masterport)
 	stdopen = isopenfd(STDIN_FILENO) + isopenfd(STDOUT_FILENO) +
 	    isopenfd(STDERR_FILENO);
 
-	if (!isopenfd(masterport))
-		logexitx(1, "proxy masterport not open %d", masterport);
-	if (!isopenfd(eport))
-		logexitx(1, "proxy enclave port not open %d", eport);
+	if (!isopenfd(masterport)) {
+		logwarnx("proxy masterport not open %d", masterport);
+		exit(1);
+	}
+	if (!isopenfd(eport)) {
+		logwarnx("proxy enclave port not open %d", eport);
+		exit(1);
+	}
 
 	for (n = 0; n < ifnvsize; n++) {
 		ifn = ifnv[n];
-		if (!isopenfd(ifn->port))
-			logexitx(1, "proxy %s port %d not open", ifn->ifname,
+		if (!isopenfd(ifn->port)) {
+			logwarnx("proxy %s port %d not open", ifn->ifname,
 			    ifn->port);
+			exit(1);
+		}
 	}
 
-	if ((size_t)getdtablecount() != stdopen + 2 + ifnvsize)
-		logexitx(1, "proxy descriptor mismatch: %d != %zu",
+	if ((size_t)getdtablecount() != stdopen + 2 + ifnvsize) {
+		logwarnx("proxy descriptor mismatch: %d != %zu",
 		    getdtablecount(), stdopen + 2 + ifnvsize);
+		exit(1);
+	}
 
 	/*
 	 * Initialize IPC and UDP sockets in one sorted array so that we can
@@ -903,12 +958,16 @@ proxy_init(int masterport)
 
 		sockmapv = reallocarray(sockmapv, sockmapvsize,
 		    sizeof(*sockmapv));
-		if (sockmapv == NULL)
-			logexit(1, "proxy reallocarray sockmapv error");
+		if (sockmapv == NULL) {
+			logwarn("proxy reallocarray sockmapv error");
+			exit(1);
+		}
 
 		sockmapv[i] = malloc(sizeof(*sockmapv[i]));
-		if (sockmapv[i] == NULL)
-			logexit(1, "proxy malloc sockmapv[i] error");
+		if (sockmapv[i] == NULL) {
+			logwarn("proxy malloc sockmapv[i] error");
+			exit(1);
+		}
 
 		sockmapv[i]->s = ifn->port;
 		sockmapv[i]->ifn = ifn;
@@ -918,46 +977,59 @@ proxy_init(int masterport)
 		 * Before creating server sockets, wait for each ifn process to
 		 * send the signal that it has created its sockets.
 		 */
-		if (read(ifn->port, &ifnid, sizeof ifnid) == -1)
-			logexit(1, "proxy %s read error port %d",
+		if (read(ifn->port, &ifnid, sizeof ifnid) == -1) {
+			logwarn("proxy %s read error port %d",
 			    ifn->ifname, ifn->port);
+			exit(1);
+		}
 
-		if (ifnid != ifn->id)
-			logexitx(1, "proxy %s received ifn id %u, expected "
+		if (ifnid != ifn->id) {
+			logwarnx("proxy %s received ifn id %u, expected "
 			    "%u", ifn->ifname, ifnid, ifn->id);
+			exit(1);
+		}
 
 		i++;
 
 		for (m = 0; m < ifn->listenaddrssize; m++) {
 			listenaddr = ifn->listenaddrs[m];
 			s = socket(listenaddr->h.family, SOCK_DGRAM, 0);
-			if (s == -1)
-				logexit(1, "proxy %s socket listenaddr error",
+			if (s == -1) {
+				logwarn("proxy %s socket listenaddr error",
 				    ifn->ifname);
+				exit(1);
+			}
 
 			if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &on,
-			    sizeof on) == -1)
-				logexit(1, "proxy %s setsockopt reuseaddr "
+			    sizeof on) == -1) {
+				logwarn("proxy %s setsockopt reuseaddr "
 				    "error", ifn->ifname);
+				exit(1);
+			}
 
 			len = MAXRECVBUF;
 			if (setsockopt(s, SOL_SOCKET, SO_RCVBUF, &len,
-			    sizeof len) == -1)
-				logexit(1, "proxy %s setsockopt rcvbuf error",
+			    sizeof len) == -1) {
+				logwarn("proxy %s setsockopt rcvbuf error",
 				    ifn->ifname);
+				exit(1);
+			}
 
 			if (bind(s, (struct sockaddr *)listenaddr,
 			    listenaddr->h.len) == -1) {
 				addrtostr(addrstr, sizeof(addrstr),
 				    (struct sockaddr *)listenaddr, 0);
-				logexit(1, "proxy %s bind for %s failed",
+				logwarn("proxy %s bind for %s failed",
 				    ifn->ifname, addrstr);
+				exit(1);
 			}
 
 			sockmapv[i] = malloc(sizeof(*sockmapv[i]));
-			if (sockmapv[i] == NULL)
-				logexit(1, "proxy %s malloc sockmapv[i] error",
+			if (sockmapv[i] == NULL) {
+				logwarn("proxy %s malloc sockmapv[i] error",
 				    ifn->ifname);
+				exit(1);
+			}
 
 			sockmapv[i]->s = s;
 			sockmapv[i]->ifn = ifn;
@@ -989,9 +1061,11 @@ proxy_init(int masterport)
 		nrsessmaps += ifn->sessmapvsize;
 	}
 
-	if (nrpeers > MAXPEERS)
-		logexit(1, "proxy number of peers exceeds maximum %zu %d",
+	if (nrpeers > MAXPEERS) {
+		logwarn("proxy number of peers exceeds maximum %zu %d",
 		    nrpeers, MAXPEERS);
+		exit(1);
+	}
 
 	heapneeded = MINDATA;
 	heapneeded += nrpeers * sizeof(struct peer);
@@ -1013,25 +1087,39 @@ proxy_init(int masterport)
 	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
 	sa.sa_handler = handlesig;
 	sa.sa_flags = SA_RESTART;
-	if (sigemptyset(&sa.sa_mask) == -1)
-		logexit(1, "proxy sigemptyset error");
-	if (sigaction(SIGUSR1, &sa, NULL) == -1)
-		logexit(1, "proxy sigaction SIGUSR1 error");
-	if (sigaction(SIGTERM, &sa, NULL) == -1)
-		logexit(1, "proxy sigaction SIGTERM error");
+	if (sigemptyset(&sa.sa_mask) == -1) {
+		logwarn("proxy sigemptyset error");
+		exit(1);
+	}
+	if (sigaction(SIGUSR1, &sa, NULL) == -1) {
+		logwarn("proxy sigaction SIGUSR1 error");
+		exit(1);
+	}
+	if (sigaction(SIGTERM, &sa, NULL) == -1) {
+		logwarn("proxy sigaction SIGTERM error");
+		exit(1);
+	}
 
-	if (chroot(EMPTYDIR) == -1)
-		logexit(1, "proxy chroot %s error", EMPTYDIR);
-	if (chdir("/") == -1)
-		logexit(1, "proxy chdir error");
+	if (chroot(EMPTYDIR) == -1) {
+		logwarn("proxy chroot %s error", EMPTYDIR);
+		exit(1);
+	}
+	if (chdir("/") == -1) {
+		logwarn("proxy chdir error");
+		exit(1);
+	}
 
 	if (setgroups(1, &gid) ||
 	    setresgid(gid, gid, gid) ||
-	    setresuid(uid, uid, uid))
-		logexit(1, "proxy cannot drop privileges");
+	    setresuid(uid, uid, uid)) {
+		logwarn("proxy cannot drop privileges");
+		exit(1);
+	}
 
-	if (pledge("stdio", "") == -1)
-		logexit(1, "proxy pledge error");
+	if (pledge("stdio", "") == -1) {
+		logwarn("proxy pledge error");
+		exit(1);
+	}
 }
 
 void

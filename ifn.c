@@ -383,12 +383,18 @@ assignaddr6(const char *ifname, const struct cidraddr *ca)
 	memcpy(&addreq.ifra_prefixmask, &mask,
 	    MIN(sizeof addreq.ifra_prefixmask, sizeof mask));
 
-	if ((s = socket(AF_INET6, SOCK_DGRAM, 0)) == -1)
-		logexitx(1, "%s %s socket", ifn->ifname, __func__);
-	if (ioctl(s, SIOCAIFADDR_IN6, &addreq) == -1)
-		logexit(1, "%s %s ioctl", ifn->ifname, __func__);
-	if (close(s) == -1)
-		logexit(1, "%s %s close", ifn->ifname, __func__);
+	if ((s = socket(AF_INET6, SOCK_DGRAM, 0)) == -1) {
+		logwarnx("%s %s socket", ifn->ifname, __func__);
+		exit(1);
+	}
+	if (ioctl(s, SIOCAIFADDR_IN6, &addreq) == -1) {
+		logwarn("%s %s ioctl", ifn->ifname, __func__);
+		exit(1);
+	}
+	if (close(s) == -1) {
+		logwarn("%s %s close", ifn->ifname, __func__);
+		exit(1);
+	}
 
 	return 0;
 }
@@ -428,12 +434,18 @@ assignaddr4(const char *ifname, const struct cidraddr *ca)
 	memcpy(&addreq.ifra_mask, &mask,
 	    MIN(sizeof addreq.ifra_mask, sizeof mask));
 
-	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
-		logexitx(1, "%s %s socket", ifn->ifname, __func__);
-	if (ioctl(s, SIOCAIFADDR, &addreq) == -1)
-		logexit(1, "%s %s ioctl", ifn->ifname, __func__);
-	if (close(s) == -1)
-		logexit(1, "%s %s close", ifn->ifname, __func__);
+	if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+		logwarnx("%s %s socket", ifn->ifname, __func__);
+		exit(1);
+	}
+	if (ioctl(s, SIOCAIFADDR, &addreq) == -1) {
+		logwarn("%s %s ioctl", ifn->ifname, __func__);
+		exit(1);
+	}
+	if (close(s) == -1) {
+		logwarn("%s %s close", ifn->ifname, __func__);
+		exit(1);
+	}
 
 	return 0;
 }
@@ -1095,9 +1107,11 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 		    addrstr1, addrstr2);
 
 	EV_SET(&ev, peer->sock, EVFILT_READ, EV_ADD, 0, 0, NULL);
-	if (kevent(kq, &ev, 1, NULL, 0, NULL) == -1)
-		logexit(1, "%s %s %s kevent error", ifn->ifname, peer->name,
+	if (kevent(kq, &ev, 1, NULL, 0, NULL) == -1) {
+		logwarn("%s %s %s kevent error", ifn->ifname, peer->name,
 		    __func__);
+		exit(1);
+	}
 
 	return 0;
 }
@@ -1210,14 +1224,18 @@ sendreqhsinit(struct peer *peer)
 {
 	struct msgreqwginit mri;
 
-	if (makemsgreqwginit(&mri) == -1)
-		logexitx(1, "%s %s makemsgreqwginit error", ifn->ifname,
+	if (makemsgreqwginit(&mri) == -1) {
+		logwarnx("%s %s makemsgreqwginit error", ifn->ifname,
 		    peer->name);
+		exit(1);
+	}
 
 	if (wire_sendpeeridmsg(eport, peer->id, MSGREQWGINIT, &mri, sizeof(mri))
-	    == -1)
-		logexitx(1, "%s %s error sending init message request to enclave",
+	    == -1) {
+		logwarnx("%s %s error sending init message request to enclave",
 		    ifn->ifname, peer->name);
+		exit(1);
+	}
 
 	/*
 	 * Since the rekey timer is set by session id, we need one even though
@@ -1883,14 +1901,18 @@ handleenclavemsg(void)
 
 	msgsize = sizeof(msg);
 	if (wire_recvpeeridmsg(eport, &peerid, &mtcode, msg, &msgsize)
-	    == -1)
-		logexitx(1, "%s enclave read error", ifn->ifname);
+	    == -1) {
+		logwarnx("%s enclave read error", ifn->ifname);
+		exit(1);
+	}
 
 	stats.enclin++;
 
-	if (!findpeer(peerid, &p))
-		logexit(1, "%s unknown peer id from enclave %u", ifn->ifname,
+	if (!findpeer(peerid, &p)) {
+		logwarn("%s unknown peer id from enclave %u", ifn->ifname,
 		    peerid);
+		exit(1);
+	}
 
 	switch (mtcode) {
 	case MSGWGINIT:
@@ -2140,8 +2162,9 @@ handleenclavemsg(void)
 
 		break;
 	default:
-		logexitx(1, "%s %s enclave sent an unexpected message %c",
+		logwarnx("%s %s enclave sent an unexpected message %c",
 		    ifn->ifname, p->name, mtcode);
+		exit(1);
 	}
 
 	return 0;
@@ -2174,8 +2197,10 @@ handletundmsg(void)
 
 	msgsize = sizeof(msg);
 	rc = read(tund, msg, msgsize);
-	if (rc < 0)
-		logexitx(1, "%s device read error", ifn->ifname);
+	if (rc < 0) {
+		logwarnx("%s device read error", ifn->ifname);
+		exit(1);
+	}
 
 	msgsize = rc;
 
@@ -2442,9 +2467,11 @@ handlesocketmsg(struct peer *p)
 		 * the session keys if the packet turns out to be valid.
 		 */
 		if (wire_sendpeeridmsg(eport, p->id, MSGWGINIT, mwi,
-		    sizeof(*mwi)) == -1)
-			logexitx(1, "%s %s error forwarding init message to "
+		    sizeof(*mwi)) == -1) {
+			logwarnx("%s %s error forwarding init message to "
 			    "enclave", ifn->ifname, p->name);
+			exit(1);
+		}
 
 		if (verbose > 0)
 			lognoticex("%s %s got init message from peer, forwarded"
@@ -2470,10 +2497,12 @@ handlesocketmsg(struct peer *p)
 			}
 
 			if (wire_sendpeeridmsg(eport, p->id, MSGWGRESP, mwr,
-			    sizeof(*mwr)) == -1)
-				logexitx(1, "%s %s [%x] error forwarding "
+			    sizeof(*mwr)) == -1) {
+				logwarnx("%s %s [%x] error forwarding "
 				    "response message to enclave", ifn->ifname,
 				    p->name, p->sesstent.id);
+				exit(1);
+			}
 
 			p->sesstent.state = RESPRECVD;
 
@@ -2533,8 +2562,10 @@ handleproxymsg(void)
 
 	msgsize = sizeof(msg);
 	if (wire_recvproxymsg(pport, &ifnid, &lsa, &fsa, &mtcode, msg,
-	    &msgsize) == -1)
-		logexitx(1, "%s proxy read error", ifn->ifname);
+	    &msgsize) == -1) {
+		logwarnx("%s proxy read error", ifn->ifname);
+		exit(1);
+	}
 
 	stats.proxin++;
 
@@ -2690,8 +2721,10 @@ ifn_serv(void)
 	size_t evsize, maxevsize, n;
 	int nev, i;
 
-	if ((kq = kqueue()) == -1)
-		logexit(1, "%s kqueue", ifn->ifname);
+	if ((kq = kqueue()) == -1) {
+		logwarn("%s kqueue", ifn->ifname);
+		exit(1);
+	}
 
 	/*
 	 * Allocate space for events on eport, pport and tund and future
@@ -2700,18 +2733,24 @@ ifn_serv(void)
 	 */
 	evsize = 3;
 	maxevsize = evsize + ifn->peerssize * (4 + 1 + 2);
-	if ((ev = calloc(maxevsize, sizeof(*ev))) == NULL)
-		logexit(1, "%s calloc ev", ifn->ifname);
+	if ((ev = calloc(maxevsize, sizeof(*ev))) == NULL) {
+		logwarn("%s calloc ev", ifn->ifname);
+		exit(1);
+	}
 
 	EV_SET(&ev[0], eport, EVFILT_READ, EV_ADD, 0, 0, NULL);
 	EV_SET(&ev[1], pport, EVFILT_READ, EV_ADD, 0, 0, NULL);
 	EV_SET(&ev[2], tund, EVFILT_READ, EV_ADD, 0, 0, NULL);
 
-	if (kevent(kq, ev, evsize, NULL, 0, NULL) == -1)
-		logexit(1, "%s kevent", ifn->ifname);
+	if (kevent(kq, ev, evsize, NULL, 0, NULL) == -1) {
+		logwarn("%s kevent", ifn->ifname);
+		exit(1);
+	}
 
-	if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
-		logexit(1, "%s %s clock_gettime", ifn->ifname, __func__);
+	if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1) {
+		logwarn("%s %s clock_gettime", ifn->ifname, __func__);
+		exit(1);
+	}
 	now = utime(&ts);
 
 	/* Connect to peers with known end-points. */
@@ -2730,14 +2769,17 @@ ifn_serv(void)
 			logstats = 0;
 		}
 
-		if (doterm)
-			logexitx(1, "%s received TERM, shutting down", ifn->ifname);
+		if (doterm) {
+			logwarnx("%s received TERM, shutting down", ifn->ifname);
+			exit(1);
+		}
 
 		if ((nev = kevent(kq, NULL, 0, ev, maxevsize, NULL)) == -1) {
 			if (errno == EINTR) {
 				continue;
 			} else {
-				logexit(1, "%s kevent", ifn->ifname);
+				logwarn("%s kevent", ifn->ifname);
+				exit(1);
 			}
 		}
 
@@ -2748,8 +2790,10 @@ ifn_serv(void)
 			continue;
 		}
 
-		if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1)
-			logexit(1, "%s %s clock_gettime", ifn->ifname, __func__);
+		if (clock_gettime(CLOCK_MONOTONIC, &ts) == -1) {
+			logwarn("%s %s clock_gettime", ifn->ifname, __func__);
+			exit(1);
+		}
 		now = utime(&ts);
 
 		for (i = 0; i < nev; i++) {
@@ -2838,10 +2882,14 @@ opentunnel(const char *ifname, const char *ifdesc, int setflags)
 		memcpy(ifr.ifr_name, ifname, MIN(sizeof ifr.ifr_name,
 		    strlen(ifname) + 1));
 		ifr.ifr_data = (caddr_t)ifdesc;
-		if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1)
-			logexitx(1, "%s socket", ifn->ifname);
-		if (ioctl(s, SIOCSIFDESCR, &ifr) == -1)
-			logexit(1, "%s %s ioctl SIOCSIFDESCR", ifn->ifname, __func__);
+		if ((s = socket(AF_INET, SOCK_DGRAM, 0)) == -1) {
+			logwarnx("%s socket", ifn->ifname);
+			exit(1);
+		}
+		if (ioctl(s, SIOCSIFDESCR, &ifr) == -1) {
+			logwarn("%s %s ioctl SIOCSIFDESCR", ifn->ifname, __func__);
+			exit(1);
+		}
 		if (close(s) == -1)
 			return -1;
 	}
@@ -2860,8 +2908,10 @@ peernew(uint32_t id, const char *name, size_t nallowedips,
 {
 	struct peer *peer;
 
-	if ((peer = malloc(sizeof(*peer))) == NULL)
-		logexit(1, "%s %s malloc peer", ifn->ifname, __func__);
+	if ((peer = malloc(sizeof(*peer))) == NULL) {
+		logwarn("%s %s malloc peer", ifn->ifname, __func__);
+		exit(1);
+	}
 
 	peer->id = id;
 	peer->name = strdup(name);
@@ -2881,8 +2931,10 @@ peernew(uint32_t id, const char *name, size_t nallowedips,
 
 	peer->allowedips = reallocarray(NULL, peer->allowedipssize,
 	    sizeof *peer->allowedips);
-	if (peer->allowedips == NULL)
-		logexit(1, "%s reallocarray peer->allowedips error", ifn->ifname);
+	if (peer->allowedips == NULL) {
+		logwarn("%s reallocarray peer->allowedips error", ifn->ifname);
+		exit(1);
+	}
 
 	sesstentclear(peer, 0);
 	sessnextclear(peer, 0);
@@ -2913,49 +2965,65 @@ xaddportsock(struct peer *peer, in_port_t port, int isv6)
 		peer->portsock6count += 1;
 		peer->portsock6 = reallocarray(peer->portsock6,
 		    peer->portsock6count, sizeof(struct portsock));
-		if (peer->portsock6 == NULL)
-			logexit(1, "%s reallocarray of a new portsock failed", ifn->ifname);
+		if (peer->portsock6 == NULL) {
+			logwarn("%s reallocarray of a new portsock failed", ifn->ifname);
+			exit(1);
+		}
 
 		ps = &peer->portsock6[peer->portsock6count - 1];
 		ps->p = port;
 		ps->s = socket(AF_INET6, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-		if (ps->s == -1)
-			logexit(1, "%s %s socket error", ifn->ifname, __func__);
+		if (ps->s == -1) {
+			logwarn("%s %s socket error", ifn->ifname, __func__);
+			exit(1);
+		}
 
 		sa = (struct sockaddr *)&src.v6;
 	} else {
 		peer->portsock4count += 1;
 		peer->portsock4 = reallocarray(peer->portsock4,
 		    peer->portsock4count, sizeof(struct portsock));
-		if (peer->portsock4 == NULL)
-			logexit(1, "%s reallocarray of a new portsock failed", ifn->ifname);
+		if (peer->portsock4 == NULL) {
+			logwarn("%s reallocarray of a new portsock failed", ifn->ifname);
+			exit(1);
+		}
 
 		ps = &peer->portsock4[peer->portsock4count - 1];
 		ps->p = port;
 		ps->s = socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
-		if (ps->s == -1)
-			logexit(1, "%s %s socket error", ifn->ifname, __func__);
+		if (ps->s == -1) {
+			logwarn("%s %s socket error", ifn->ifname, __func__);
+			exit(1);
+		}
 
 		sa = (struct sockaddr *)&src.v4;
 	}
 
 	setsockaddr(sa, NULL, isv6, port);
 
-	if (setsockopt(ps->s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on) == -1)
-		logexit(1, "%s setsockopt reuseaddr error", ifn->ifname);
+	if (setsockopt(ps->s, SOL_SOCKET, SO_REUSEADDR, &on, sizeof on) == -1) {
+		logwarn("%s setsockopt reuseaddr error", ifn->ifname);
+		exit(1);
+	}
 
 	len = MAXRECVBUF;
-	if (setsockopt(ps->s, SOL_SOCKET, SO_RCVBUF, &len, sizeof len) == -1)
-		logexit(1, "%s setsockopt rcvbuf error", ifn->ifname);
+	if (setsockopt(ps->s, SOL_SOCKET, SO_RCVBUF, &len, sizeof len) == -1) {
+		logwarn("%s setsockopt rcvbuf error", ifn->ifname);
+		exit(1);
+	}
 
-	if (bind(ps->s, sa, sa->sa_len) == -1)
-		logexit(1, "%s %s bind on port %u failed", ifn->ifname, __func__, ntohs(port));
+	if (bind(ps->s, sa, sa->sa_len) == -1) {
+		logwarn("%s %s bind on port %u failed", ifn->ifname, __func__, ntohs(port));
+		exit(1);
+	}
 
 	/* activate so we can park the socket */
 	peer->sock = ps->s;
 	peer->sockisv6 = isv6;
-	if (peerpark(peer) == -1)
-		logexit(1, "%s %s peerpark failed", ifn->ifname, __func__);
+	if (peerpark(peer) == -1) {
+		logwarn("%s %s peerpark failed", ifn->ifname, __func__);
+		exit(1);
+	}
 }
 
 /*
@@ -2989,10 +3057,14 @@ recvconfig(int masterport)
 	char addrp[INET6_ADDRSTRLEN];
 
 	msgsize = sizeof(smsg);
-	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "ifn wire_recvmsg SINIT %d", masterport);
-	if (mtcode != SINIT)
-		logexitx(1, "ifn mtcode SINIT %d", mtcode);
+	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+		logwarnx("ifn wire_recvmsg SINIT %d", masterport);
+		exit(1);
+	}
+	if (mtcode != SINIT) {
+		logwarnx("ifn mtcode SINIT %d", mtcode);
+		exit(1);
+	}
 
 	background = smsg.init.background;
 	verbose = smsg.init.verbose;
@@ -3002,13 +3074,19 @@ recvconfig(int masterport)
 	pport = smsg.init.proxport;
 
 	msgsize = sizeof(smsg);
-	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "ifn wire_recvmsg SIFN");
-	if (mtcode != SIFN)
-		logexitx(1, "ifn mtcode SIFN");
+	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+		logwarnx("ifn wire_recvmsg SIFN");
+		exit(1);
+	}
+	if (mtcode != SIFN) {
+		logwarnx("ifn mtcode SIFN");
+		exit(1);
+	}
 
-	if ((ifn = malloc(sizeof(*ifn))) == NULL)
-		logexit(1, "ifn malloc error");
+	if ((ifn = malloc(sizeof(*ifn))) == NULL) {
+		logwarn("ifn malloc error");
+		exit(1);
+	}
 
 	ifn->id = smsg.ifn.ifnid;
 	ifn->peerssize = smsg.ifn.npeers;
@@ -3027,33 +3105,47 @@ recvconfig(int masterport)
 	    MIN(sizeof ifn->cookiekey, sizeof smsg.ifn.cookiekey));
 
 	ifn->ifaddrs = calloc(ifn->ifaddrssize, sizeof *ifn->ifaddrs);
-	if (ifn->ifaddrs == NULL)
-		logexit(1, "%s calloc ifn->ifaddrs", ifn->ifname);
+	if (ifn->ifaddrs == NULL) {
+		logwarn("%s calloc ifn->ifaddrs", ifn->ifname);
+		exit(1);
+	}
 
 	ifn->peers = calloc(ifn->peerssize, sizeof *ifn->peers);
-	if (ifn->peers == NULL)
-		logexit(1, "%s calloc ifn->peers", ifn->ifname);
+	if (ifn->peers == NULL) {
+		logwarn("%s calloc ifn->peers", ifn->ifname);
+		exit(1);
+	}
 
 	ifn->laddr6 = calloc(ifn->laddr6count, sizeof *ifn->laddr6);
-	if (ifn->laddr6 == NULL)
-		logexit(1, "%s calloc ifn->laddr6", ifn->ifname);
+	if (ifn->laddr6 == NULL) {
+		logwarn("%s calloc ifn->laddr6", ifn->ifname);
+		exit(1);
+	}
 
 	ifn->laddr4 = calloc(ifn->laddr4count, sizeof *ifn->laddr4);
-	if (ifn->laddr4 == NULL)
-		logexit(1, "%s calloc ifn->laddr4", ifn->ifname);
+	if (ifn->laddr4 == NULL) {
+		logwarn("%s calloc ifn->laddr4", ifn->ifname);
+		exit(1);
+	}
 
 	/* first receive all interface addresses */
 	for (n = 0; n < ifn->ifaddrssize; n++) {
 		msgsize = sizeof(smsg);
-		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "%s wire_recvmsg SCIDRADDR", ifn->ifname);
-		if (mtcode != SCIDRADDR)
-			logexitx(1, "%s mtcode SCIDRADDR", ifn->ifname);
+		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+			logwarnx("%s wire_recvmsg SCIDRADDR", ifn->ifname);
+			exit(1);
+		}
+		if (mtcode != SCIDRADDR) {
+			logwarnx("%s mtcode SCIDRADDR", ifn->ifname);
+			exit(1);
+		}
 
 		assert(smsg.cidraddr.ifnid == ifn->id);
 
-		if ((ifaddr = malloc(sizeof(*ifaddr))) == NULL)
-			logexit(1, "%s malloc ifaddr", ifn->ifname);
+		if ((ifaddr = malloc(sizeof(*ifaddr))) == NULL) {
+			logwarn("%s malloc ifaddr", ifn->ifname);
+			exit(1);
+		}
 
 		ifaddr->prefixlen = smsg.cidraddr.prefixlen;
 		memcpy(&ifaddr->addr, &smsg.cidraddr.addr,
@@ -3085,17 +3177,22 @@ recvconfig(int masterport)
 				    inet_ntoa(sin->sin_addr),
 				    ifaddr->prefixlen);
 		} else {
-			logexitx(1, "%s illegal address family", ifn->ifname);
+			logwarnx("%s illegal address family", ifn->ifname);
+			exit(1);
 		}
 	}
 
 	/* then receive all listen addresses, first v6, then v4 */
 	for (n = 0; n < ifn->laddr6count; n++) {
 		msgsize = sizeof(smsg);
-		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "%s wire_recvmsg SCIDRADDR", ifn->ifname);
-		if (mtcode != SCIDRADDR)
-			logexitx(1, "%s mtcode SCIDRADDR", ifn->ifname);
+		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+			logwarnx("%s wire_recvmsg SCIDRADDR", ifn->ifname);
+			exit(1);
+		}
+		if (mtcode != SCIDRADDR) {
+			logwarnx("%s mtcode SCIDRADDR", ifn->ifname);
+			exit(1);
+		}
 
 		assert(smsg.cidraddr.ifnid == ifn->id);
 
@@ -3105,10 +3202,14 @@ recvconfig(int masterport)
 
 	for (n = 0; n < ifn->laddr4count; n++) {
 		msgsize = sizeof(smsg);
-		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "%s wire_recvmsg SCIDRADDR", ifn->ifname);
-		if (mtcode != SCIDRADDR)
-			logexitx(1, "%s mtcode SCIDRADDR", ifn->ifname);
+		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+			logwarnx("%s wire_recvmsg SCIDRADDR", ifn->ifname);
+			exit(1);
+		}
+		if (mtcode != SCIDRADDR) {
+			logwarnx("%s mtcode SCIDRADDR", ifn->ifname);
+			exit(1);
+		}
 
 		assert(smsg.cidraddr.ifnid == ifn->id);
 
@@ -3121,25 +3222,33 @@ recvconfig(int masterport)
 
 	if (ifn->laddr6count == 0) {
 		ifn->laddr6 = malloc(sizeof *ifn->laddr6);
-		if (ifn->laddr6 == NULL)
-			logexit(1, "%s malloc error ifn->laddr6", ifn->ifname);
+		if (ifn->laddr6 == NULL) {
+			logwarn("%s malloc error ifn->laddr6", ifn->ifname);
+			exit(1);
+		}
 		ifn->laddr6count = 1;
 
-		if (inet_pton(AF_INET6, "::1", &inet_addr.addr6) != 1)
-			logexit(1, "%s inet_pton error ::1", ifn->ifname);
+		if (inet_pton(AF_INET6, "::1", &inet_addr.addr6) != 1) {
+			logwarn("%s inet_pton error ::1", ifn->ifname);
+			exit(1);
+		}
 
 		setsockaddr((struct sockaddr *)ifn->laddr6, &inet_addr, 1, 0);
 	}
 
 	if (ifn->laddr4count == 0) {
 		ifn->laddr4 = malloc(sizeof *ifn->laddr4);
-		if (ifn->laddr4 == NULL)
-			logexit(1, "%s malloc error ifn->laddr4", ifn->ifname);
+		if (ifn->laddr4 == NULL) {
+			logwarn("%s malloc error ifn->laddr4", ifn->ifname);
+			exit(1);
+		}
 		ifn->laddr4count = 1;
 
 		if (inet_pton(AF_INET, "127.0.0.1", &inet_addr.addr4)
-		    != 1)
-			logexit(1, "%s inet_pton 127.0.0.1", ifn->ifname);
+		    != 1) {
+			logwarn("%s inet_pton 127.0.0.1", ifn->ifname);
+			exit(1);
+		}
 
 		setsockaddr((struct sockaddr *)ifn->laddr4, &inet_addr, 0, 0);
 	}
@@ -3147,28 +3256,40 @@ recvconfig(int masterport)
 	/* then receive peers */
 	for (m = 0; m < ifn->peerssize; m++) {
 		msgsize = sizeof(smsg);
-		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-			logexitx(1, "%s wire_recvmsg SPEER", ifn->ifname);
-		if (mtcode != SPEER)
-			logexitx(1, "%s mtcode SPEER", ifn->ifname);
+		if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+			logwarnx("%s wire_recvmsg SPEER", ifn->ifname);
+			exit(1);
+		}
+		if (mtcode != SPEER) {
+			logwarnx("%s mtcode SPEER", ifn->ifname);
+			exit(1);
+		}
 
 		assert(smsg.peer.peerid == m);
 
 		if ((peer = peernew(m, smsg.peer.name, smsg.peer.nallowedips,
-		    &smsg.peer.fsa)) == NULL)
-			logexit(1, "%s peernew %zu", ifn->ifname, m);
+		    &smsg.peer.fsa)) == NULL) {
+			logwarn("%s peernew %zu", ifn->ifname, m);
+			exit(1);
+		}
 
 		ifn->peers[m] = peer;
 
 		for (n = 0; n < peer->allowedipssize; n++) {
-			if ((allowedip = malloc(sizeof(*allowedip))) == NULL)
-				logexit(1, "%s malloc allowedip", ifn->ifname);
+			if ((allowedip = malloc(sizeof(*allowedip))) == NULL) {
+				logwarn("%s malloc allowedip", ifn->ifname);
+				exit(1);
+			}
 
 			msgsize = sizeof(smsg);
-			if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-				logexitx(1, "%s wire_recvmsg SCIDRADDR", ifn->ifname);
-			if (mtcode != SCIDRADDR)
-				logexitx(1, "%s mtcode SCIDRADDR", ifn->ifname);
+			if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+				logwarnx("%s wire_recvmsg SCIDRADDR", ifn->ifname);
+				exit(1);
+			}
+			if (mtcode != SCIDRADDR) {
+				logwarnx("%s mtcode SCIDRADDR", ifn->ifname);
+				exit(1);
+			}
 
 			assert(smsg.peer.peerid == m);
 
@@ -3185,9 +3306,11 @@ recvconfig(int masterport)
 				    allowedip->prefixlen, 1);
 
 				if (inet_ntop(AF_INET6, &sin6->sin6_addr, addrp,
-				    sizeof(addrp)) == NULL)
-					logexit(1, "%s inet_ntop on v6 allowedip "
+				    sizeof(addrp)) == NULL) {
+					logwarn("%s inet_ntop on v6 allowedip "
 					    "failed", ifn->ifname);
+					exit(1);
+				}
 			} else if (allowedip->addr.h.family == AF_INET) {
 				assert(allowedip->prefixlen <= 32);
 
@@ -3201,12 +3324,15 @@ recvconfig(int masterport)
 				    allowedip->v4mask.s_addr;
 
 				if (inet_ntop(AF_INET, &sin->sin_addr, addrp,
-				    sizeof(addrp)) == NULL)
-					logexit(1, "%s inet_ntop on v4 allowedip "
+				    sizeof(addrp)) == NULL) {
+					logwarn("%s inet_ntop on v4 allowedip "
 					    "failed", ifn->ifname);
+					exit(1);
+				}
 			} else {
-				logexitx(1, "%s %s allowedip unknown address family", ifn->ifname,
+				logwarnx("%s %s allowedip unknown address family", ifn->ifname,
 				    peer->name);
+				exit(1);
 			}
 
 			if (verbose > 1)
@@ -3260,14 +3386,17 @@ recvconfig(int masterport)
 				    peer != peer2) {
 					if (inet_ntop(AF_INET6,
 					    &allowedip->v6addrmasked, addrstr,
-					    sizeof addrstr) == NULL)
-						logexit(1, "%s %s inet_ntop error", ifn->ifname,
+					    sizeof addrstr) == NULL) {
+						logwarn("%s %s inet_ntop error", ifn->ifname,
 						    __func__);
+						exit(1);
+					}
 
-					logexitx(1, "%s %s: %s/%zu\n",
+					logwarnx("%s %s: %s/%zu\n",
 					    "multiple allowedips with the same "
 					    "address and prefixlen", ifn->ifname,
 					    addrstr, allowedip->prefixlen);
+					exit(1);
 				}
 			}
 		}
@@ -3275,10 +3404,14 @@ recvconfig(int masterport)
 
 	/* expect end of startup signal */
 	msgsize = sizeof(smsg);
-	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1)
-		logexitx(1, "%s wire_recvmsg SEOS", ifn->ifname);
-	if (mtcode != SEOS)
-		logexitx(1, "%s mtcode SEOS", ifn->ifname);
+	if (wire_recvmsg(masterport, &mtcode, &smsg, &msgsize) == -1) {
+		logwarnx("%s wire_recvmsg SEOS", ifn->ifname);
+		exit(1);
+	}
+	if (mtcode != SEOS) {
+		logwarnx("%s mtcode SEOS", ifn->ifname);
+		exit(1);
+	}
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
@@ -3308,12 +3441,18 @@ ifn_init(int masterport)
 	fdcount = isopenfd(STDIN_FILENO) + isopenfd(STDOUT_FILENO) +
 	    isopenfd(STDERR_FILENO);
 
-	if (!isopenfd(masterport))
-		logexitx(1, "%s masterport %d", ifn->ifname, masterport);
-	if (!isopenfd(eport))
-		logexitx(1, "%s eport %d", ifn->ifname, eport);
-	if (!isopenfd(pport))
-		logexitx(1, "%s pport %d", ifn->ifname, pport);
+	if (!isopenfd(masterport)) {
+		logwarnx("%s masterport %d", ifn->ifname, masterport);
+		exit(1);
+	}
+	if (!isopenfd(eport)) {
+		logwarnx("%s eport %d", ifn->ifname, eport);
+		exit(1);
+	}
+	if (!isopenfd(pport)) {
+		logwarnx("%s pport %d", ifn->ifname, pport);
+		exit(1);
+	}
 
 	fdcount += 3;
 
@@ -3322,17 +3461,21 @@ ifn_init(int masterport)
 		fdcount += ifn->peers[n]->portsock4count;
 	}
 
-	if ((size_t)getdtablecount() != fdcount)
-		logexitx(1, "%s descriptor mismatch: %d %zu", ifn->ifname, getdtablecount(),
+	if ((size_t)getdtablecount() != fdcount) {
+		logwarnx("%s descriptor mismatch: %d %zu", ifn->ifname, getdtablecount(),
 		    fdcount);
+		exit(1);
+	}
 
 	aead = EVP_aead_chacha20_poly1305();
 	assert(EVP_AEAD_nonce_length(aead) == sizeof(nonce));
 	assert(EVP_AEAD_max_tag_len(aead) == TAGLEN);
 
 	if ((tund = opentunnel(ifn->ifname, ifn->ifdesc, ifn->ifaddrssize))
-	    == -1)
-		logexit(1, "%s opentunnel", ifn->ifname);
+	    == -1) {
+		logwarn("%s opentunnel", ifn->ifname);
+		exit(1);
+	}
 
 	/* assign addresses */
 	for (n = 0; n < ifn->ifaddrssize; n++) {
@@ -3345,9 +3488,11 @@ ifn_init(int masterport)
 	 * peer allowed addresses. It doesn't have to be perfectly tight.
 	 */
 
-	if (ifn->peerssize > MAXPEERS)
-		logexit(1, "%s number of peers exceeds maximum %zu %d", ifn->ifname,
+	if (ifn->peerssize > MAXPEERS) {
+		logwarn("%s number of peers exceeds maximum %zu %d", ifn->ifname,
 		    ifn->peerssize, MAXPEERS);
+		exit(1);
+	}
 
 	heapneeded = MINDATA;
 	heapneeded += ifn->peerssize * sizeof(struct session) * 2;
@@ -3378,27 +3523,43 @@ ifn_init(int masterport)
 	/* print statistics on SIGUSR1 and do a graceful exit on SIGTERM */
 	sa.sa_handler = handlesig;
 	sa.sa_flags = SA_RESTART;
-	if (sigemptyset(&sa.sa_mask) == -1)
-		logexit(1, "%s sigemptyset", ifn->ifname);
-	if (sigaction(SIGUSR1, &sa, NULL) == -1)
-		logexit(1, "%s sigaction SIGUSR1", ifn->ifname);
-	if (sigaction(SIGTERM, &sa, NULL) == -1)
-		logexit(1, "%s sigaction SIGTERM", ifn->ifname);
+	if (sigemptyset(&sa.sa_mask) == -1) {
+		logwarn("%s sigemptyset", ifn->ifname);
+		exit(1);
+	}
+	if (sigaction(SIGUSR1, &sa, NULL) == -1) {
+		logwarn("%s sigaction SIGUSR1", ifn->ifname);
+		exit(1);
+	}
+	if (sigaction(SIGTERM, &sa, NULL) == -1) {
+		logwarn("%s sigaction SIGTERM", ifn->ifname);
+		exit(1);
+	}
 
-	if (chroot(EMPTYDIR) == -1)
-		logexit(1, "%s chroot %s", ifn->ifname, EMPTYDIR);
-	if (chdir("/") == -1)
-		logexit(1, "%s chdir", ifn->ifname);
+	if (chroot(EMPTYDIR) == -1) {
+		logwarn("%s chroot %s", ifn->ifname, EMPTYDIR);
+		exit(1);
+	}
+	if (chdir("/") == -1) {
+		logwarn("%s chdir", ifn->ifname);
+		exit(1);
+	}
 
 	if (setgroups(1, &gid) ||
 	    setresgid(gid, gid, gid) ||
-	    setresuid(uid, uid, uid))
-		logexit(1, "%s %s: cannot drop privileges", ifn->ifname, __func__);
+	    setresuid(uid, uid, uid)) {
+		logwarn("%s %s: cannot drop privileges", ifn->ifname, __func__);
+		exit(1);
+	}
 
-	if (pledge("stdio inet", "") == -1)
-		logexit(1, "%s pledge", ifn->ifname);
+	if (pledge("stdio inet", "") == -1) {
+		logwarn("%s pledge", ifn->ifname);
+		exit(1);
+	}
 
 	/* let proxy know we have connected all sockets */
-	if (write(pport, &ifn->id, sizeof ifn->id) == -1)
-		logexit(1, "%s write error ifn %u to proxy", ifn->ifname, ifn->id);
+	if (write(pport, &ifn->id, sizeof ifn->id) == -1) {
+		logwarn("%s write error ifn %u to proxy", ifn->ifname, ifn->id);
+		exit(1);
+	}
 }
