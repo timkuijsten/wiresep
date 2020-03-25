@@ -1,3 +1,13 @@
+2020-03-25, Version 0.10.0
+
+* major effort to clarify all log messages
+* fix all warnings and false positives reported by Clang Static Analyzer
+* fix some warnings found with GCC 8.3
+* enclave: fix byte order conversion of response sender id
+* wiresep-keygen reorder output
+* guard most memcpy(3) for OOB writes by using MIN
+
+
 2020-03-18, Version 0.9.1
 
 * fix crash on first packet in client-only mode
