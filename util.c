@@ -43,7 +43,7 @@
 
 extern int background, verbose;
 
-const char asciihexmap[] = {
+const signed char asciihexmap[] = {
 	-1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	    -1, -1, -1, -1, -1, -1, -1, -1, -1,
 	-1, /* ! */
