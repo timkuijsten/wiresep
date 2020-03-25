@@ -3165,7 +3165,7 @@ recvconfig(int masterport)
 		} else if (ifaddr->addr.h.family == AF_INET) {
 			assert(ifaddr->prefixlen <= 32);
 
-			ifaddr->v4mask.s_addr = htonl(((1UL << 32) - 1) <<
+			ifaddr->v4mask.s_addr = htonl(((1ULL << 32) - 1) <<
 			    (32 - ifaddr->prefixlen));
 
 			sin = (struct sockaddr_in *)&ifaddr->addr;
@@ -3315,7 +3315,7 @@ recvconfig(int masterport)
 				assert(allowedip->prefixlen <= 32);
 
 				allowedip->v4mask.s_addr =
-				    htonl(((1UL << 32) - 1) <<
+				    htonl(((1ULL << 32) - 1) <<
 				    (32 - allowedip->prefixlen));
 
 				sin = (struct sockaddr_in *)&allowedip->addr;
