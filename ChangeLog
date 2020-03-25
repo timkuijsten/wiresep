@@ -1,3 +1,9 @@
+2020-03-25, Version 0.10.1
+
+* upstream OpenBSD package patches that fix some build issues on base-gcc
+  (32-bit) archs, patches thanks to Theo Buehler
+
+
 2020-03-25, Version 0.10.0
 
 * major effort to clarify all log messages
