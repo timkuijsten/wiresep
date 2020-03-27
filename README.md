@@ -17,19 +17,10 @@ Status: **beta**
 
 * OpenBSD 6.4 or higher
 
-## Install and run
+## Install
 
 ```sh
-$ git clone https://github.com/timkuijsten/wiresep.git
-$ cd wiresep
-$ make
-$ doas make install
-```
-
-Create a new user:
-
-```sh
-doas useradd -c 'WireSep Daemon' -d /var/empty -L daemon -s /sbin/nologin -u 505 _wiresep
+$ doas pkg_add wiresep
 ```
 
 Generate a new private key with
