@@ -285,7 +285,7 @@ parsekey(wskey dst, const char *src, size_t srcsize)
  * is tried.
  * If "peername" is NULL and "ifname" is not NULL an interface key path is
  * tried. In this case "ext" indicates whether to try a private key or a pre-
- * shared key by being either "key" or "psk", respectively.
+ * shared key by being either "privkey" or "psk", respectively.
  *
  * Returns 1 if a key was found and parsed into "out".
  * Returns 0 if the default path existed and had no syntax errors, but alsno no
@@ -294,7 +294,7 @@ parsekey(wskey dst, const char *src, size_t srcsize)
  * set to any error that open(2) can set.
  * Returns -2 if parsekeyfile() returned an error, in this case errno will *not*
  * be set.
- * Returns -3 if "ext" is not one of NULL, "psk" or "key".
+ * Returns -3 if "ext" is not one of NULL, "psk" or "privkey".
  *
  * Exits on asprintf(3) error.
  */
@@ -314,7 +314,7 @@ xtrydefaultkey(wskey out, const char *ifname, const char *peername,
 		if (ext == NULL)
 			return -3;
 
-		if (strcmp(ext, "psk") != 0 && strcmp(ext, "key") != 0)
+		if (strcmp(ext, "psk") != 0 && strcmp(ext, "privkey") != 0)
 			return -3;
 
 		if (asprintf(&defaultkeypath, "/etc/wiresep/%s.%s", ifname, ext)
@@ -1049,7 +1049,7 @@ parseinterfaceconfigs(void)
 				 * Look for an interface private key.
 				 */
 				rc = xtrydefaultkey(ifn->privkey, ifn->ifname,
-				    NULL, "key");
+				    NULL, "privkey");
 
 				if (rc == 1) {
 					/* key loaded! */

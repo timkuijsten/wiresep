@@ -24,7 +24,7 @@ $ doas pkg_add wiresep
 ```
 
 Generate a new private key with
-[wiresep-keygen(1)] and store it in `/etc/wiresep/tun0.key`. Make sure only the
+[wiresep-keygen(1)] and store it in `/etc/wiresep/tun0.privkey`. Make sure only the
 superuser can access this file. Then create a
 [wiresep.conf(5)] file in */etc/wiresep/wiresep.conf*. A simple configuration
 example looks like the following:
@@ -35,7 +35,7 @@ example looks like the following:
 # and 172.16.0.1 and allows communication with the peer Jane and Joe. Jane is
 # allowed to use any source ip, while Joe may only use 2001:db8::4 or
 # 172.16.0.11/30 as the source ip of his packets. The private key for the tun0
-# interface can be stored in the default location: /etc/wiresep/tun0.key and
+# interface can be stored in the default location: /etc/wiresep/tun0.privkey and
 # must be generated with wiresep-keygen(8).
 
 interface tun0 {
