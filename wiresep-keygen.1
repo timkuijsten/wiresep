@@ -1,4 +1,4 @@
-.\" Copyright (c) 2019 Tim Kuijsten
+.\" Copyright (c) 2019, 2020 Tim Kuijsten
 .\"
 .\" Permission to use, copy, modify, and/or distribute this software for any
 .\" purpose with or without fee is hereby granted, provided that the above
@@ -12,21 +12,74 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: October 30 2019 $
+.Dd $Mdocdate: March 30 2020 $
 .Dt WIRESEP-KEYGEN 1
 .Os
 .Sh NAME
 .Nm wiresep-keygen
-.Nd A key generator for WireSep
+.Nd key generator for WireSep
 .Sh SYNOPSIS
 .Nm
+.Op Fl o Ar dir
+.Ar tunX
+.Nm
+.Op Fl o Ar dir
+.Fl s Cm global
+.Nm
+.Op Fl o Ar dir
+.Fl s Ar tunX Op Ar peer ...
 .Sh DESCRIPTION
 .Nm
-generates a public and private key pair that can be used for a WireSep
-interface as specified in
-.Xr wiresep.conf 5 .
-Furthermore it creates a pre-shared key that can optionally be used as an
+can generate the two different types of keys that are used by
+.Xr wiresep 8
+which are a private key or a pre-shared key.
+Each tunnel interface should have exactly one private key generated for it.
+Pre-shared keys can be used in different scopes, namely global, per interface or
+per peer.
+The use of pre-shared keys is optional in WireGuard, but when used add an
 additional layer of security that is quantum-proof.
+.Pp
+In the first synopsis
+.Nm
+generates a private key.
+By default the key is stored in
+.Pa /etc/wireguard
+unless overridden with
+.Fl o .
+The name of the file is
+.Pa tunX.privkey
+where
+.Ar tunX
+is the name of an interface, i.e. tun0.
+.Pp
+In the second synopsis a global pre-shared key is generated that can be used on
+all configured interfaces with all peers that have no more specific overrides.
+By default the key is stored in
+.Pa /etc/wireguard/global.psk
+unless
+.Fl o
+is used with a different
+.Ar dir .
+.Pp
+In the third synopsis a pre-shared key is generated that is used for the
+specific
+.Ar tunX
+only, or with the specified
+.Ar peer
+on
+.Ar tunX
+only.
+By default the key for an interface is stored in
+.Pa /etc/wireguard/tunX.psk
+unless
+.Fl o
+is used with a different
+.Ar dir .
+If any
+.Ar peer
+is specified then the key is stored in
+.Pa /etc/wireguard/tunX.peer.psk
+and override any interface specific or global pre-shared keys.
 .Sh EXIT STATUS
 .Ex -std
 .Sh SEE ALSO
