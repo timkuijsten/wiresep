@@ -19,6 +19,7 @@
 
 #include <sys/socket.h>
 
+#include <stddef.h>
 #include <unistd.h>
 
 #include "wireprot.h"
@@ -27,6 +28,28 @@
 #define DFLUSER "_wiresep"
 #define MAXIFNDESC 65
 #define MAXPEERNAME 8
+
+int yyparse(void);
+int yyd;
+
+/*
+ * Simple configuration entry.
+ *
+ * Each entry consists of zero or more strings and zero or more nested entries.
+ * There is always at least one string or at least one nested entry.
+ */
+struct scfge {
+	char **strv;	/* list of strings */
+	size_t strvsize;
+	struct scfge **entryv;	/* list of entries */
+	size_t entryvsize;
+};
+
+/* Root entry. */
+struct scfge *scfg;
+
+void scfg_printr(void);
+int scfg_clear(void);
 
 /* these are used by the other modules as well */
 int background, verbose;

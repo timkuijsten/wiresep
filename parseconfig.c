@@ -29,7 +29,6 @@
 #include <unistd.h>
 
 #include "base64.h"
-#include "scfg.h"
 #include "util.h"
 #include "wiresep.h"
 

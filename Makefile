@@ -20,7 +20,7 @@ VERSION_PATCH	= 1
 SRCFILES = base64.c enclave.c master.c proxy.c test.c wireprot.c wiresep.c \
 	    ifn.c parseconfig.c tai64n.c util.c wiresep-keygen.c
 
-HDRFILES = antireplay.h parseconfig.h tai64n.h wireprot.h base64.h scfg.h \
+HDRFILES = antireplay.h parseconfig.h tai64n.h wireprot.h base64.h \
 	    util.h wiresep.h
 
 all: wiresep wiresep-keygen
@@ -71,7 +71,7 @@ blake2s-ref.o: blake2s-ref.c blake2-impl.h blake2.h
 scfg.o: y.tab.c
 	${CC} ${CFLAGS} -c y.tab.c -o $@
 
-y.tab.c: scfg.y scfg.h
+y.tab.c: scfg.y
 	yacc scfg.y
 
 processdesign.svg: doc/processdesign.gv

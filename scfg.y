@@ -19,7 +19,7 @@
 #include <err.h>
 #include <stdio.h>
 
-#include "scfg.h"
+#include "parseconfig.h"
 
 int yydebug = 0;
 
