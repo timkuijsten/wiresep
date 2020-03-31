@@ -130,8 +130,7 @@ union smsg {
  * Exit on error.
  */
 
-void xparseconfigfd(int, struct cfgifn ***, size_t *, uid_t *, gid_t *,
-    char **);
+int parseconfigfd(int, struct cfgifn ***, size_t *, uid_t *, gid_t *, char **);
 
 /* wrapper around xparseconfigfd */
 void xparseconfigfile(const char *, struct cfgifn ***, size_t *, uid_t *, gid_t *,

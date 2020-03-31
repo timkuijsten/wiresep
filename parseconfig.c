@@ -184,13 +184,12 @@ parsekeyfile(wskey key, const char *path)
 
 	if ((fp = fopen(path, "re")) == NULL) {
 		/* errno set */
-		warn("%s", path);
+		warn("fopen error %s", path);
 		return -1;
 	}
 
 	if (!isfdsafe(fileno(fp), 0600)) {
-		errno = EPERM;
-		warn("%s: must be owned by the superuser and may not be "
+		warnx("%s: must be owned by the superuser and may not be "
 		    "readable or writable by the group or others", path);
 		rc = -1;
 		goto cleanup;
@@ -341,6 +340,14 @@ xtrydefaultkey(wskey out, const char *ifname, const char *peername,
 	} else {
 		close(d);
 		rc = parsekeyfile(out, defaultkeypath);
+
+		if (rc == 1) {
+			if (verbose > 0)
+				warnx("key loaded: %s", defaultkeypath);
+		} else {
+			warnx("could not load key: %s", defaultkeypath);
+		}
+
 		free(defaultkeypath);
 
 		if (rc == -1)
@@ -1056,9 +1063,11 @@ parseinterfaceconfigs(void)
 				} else if (rc == 0) {
 					/* no key found, be silent */
 				} else if (rc == -1 && errno == ENOENT) {
-					warnx("%s: privkeyfile not set and "
-					    "default private key file does not "
-					    "exist", ifn->ifname);
+					warnx("/etc/wiresep/%s.privkey does not"
+					    " exist. Either run\n`wiresep-keygen"
+					    " %s` or set the configuration "
+					    "directive \"privkeyfile\".",
+					    ifn->ifname, ifn->ifname);
 					e = 1;
 				} else if (rc == -1) {
 					warn("%s: could not load default "
@@ -1094,7 +1103,8 @@ parseinterfaceconfigs(void)
 		}
 
 		if (memcmp(ifn->privkey, nullkey, sizeof(wskey)) == 0) {
-			warnx("%s: privkey missing", ifn->ifname);
+			warnx("private key for %s could not be loaded",
+			    ifn->ifname);
 			e = 1;
 		} else {
 			/* calculate public key */
@@ -1420,19 +1430,19 @@ parseconfig(const struct scfge *root)
  *
  * yyparse creates a tree of scfg entries.
  *
- * Exit on error.
+ * Return 0 on success, -1 on error.
  */
-void
-xparseconfigfd(int fd, struct cfgifn ***rifnv, size_t *rifnvsize,
+int
+parseconfigfd(int fd, struct cfgifn ***rifnv, size_t *rifnvsize,
     uid_t *unprivuid, gid_t *unprivgid, char **rlogfacilitystr)
 {
 	yyd = fd;
 
 	if (yyparse() != 0)
-		errx(1, "%s: yyparse", __func__);
+		return -1;
 
 	if (parseconfig(scfg) == -1)
-		exit(1);
+		return -1;
 
 	scfg_clear();
 
@@ -1442,7 +1452,9 @@ xparseconfigfd(int fd, struct cfgifn ***rifnv, size_t *rifnvsize,
 	*unprivgid = ggid;
 
 	if ((*rlogfacilitystr = strdup(logfacilitystr)) == NULL)
-		err(1, "%s strdup", __func__);
+		err(1, "%s strdup error", __func__);
+
+	return 0;
 }
 
 /*
@@ -1463,14 +1475,15 @@ xparseconfigfile(const char *filename, struct cfgifn ***rifnv,
 		err(1, "%s", filename);
 
 	if (!isfdsafe(fd, 0644))
-		errx(1, "%s: must be owned by the superuser and may not be"
-		    " writable by the group or others", filename);
+		errx(1, "%s must be owned by the superuser and may not be "
+		    "writable by the group or others", filename);
 
-	xparseconfigfd(fd, rifnv, rifnvsize, unprivuid, unprivgid,
-	    rlogfacilitystr);
+	if (parseconfigfd(fd, rifnv, rifnvsize, unprivuid, unprivgid,
+	    rlogfacilitystr) == -1)
+		errx(1, "error while parsing %s", filename);
 
 	if (close(fd) == -1)
-		err(1, "close %s", filename);
+		err(1, "close error %s", filename);
 }
 
 /*
