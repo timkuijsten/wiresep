@@ -1005,12 +1005,12 @@ logdebugx(const char *msg, ...)
 /*
  * Make sure the given file descriptor belongs to a regular file, that it is
  * owned by the superuser and that the permissions are a subset of
- * "maxpermissions".
+ * "allowedpermissions".
  *
  * Return 1 if the fd is safe, 0 otherwise.
  */
 int
-isfdsafe(int fd, mode_t maxpermissions)
+isfdsafe(int fd, mode_t allowedpermissions)
 {
 	struct stat st;
 
@@ -1023,9 +1023,9 @@ isfdsafe(int fd, mode_t maxpermissions)
 	if (!S_ISREG(st.st_mode))
 		return 0;
 
-	maxpermissions += S_IFREG;
+	allowedpermissions += S_IFREG;
 
-	if ((st.st_mode & ~maxpermissions) != 0)
+	if ((st.st_mode & ~allowedpermissions) != 0)
 		return 0;
 
 	return 1;
