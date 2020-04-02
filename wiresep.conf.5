@@ -1,4 +1,4 @@
-.\" Copyright (c) 2019 Tim Kuijsten
+.\" Copyright (c) 2019, 2020 Tim Kuijsten
 .\"
 .\" Permission to use, copy, modify, and/or distribute this software for any
 .\" purpose with or without fee is hereby granted, provided that the above
@@ -64,9 +64,8 @@ If the file
 .Pa /etc/wiresep/global.psk
 exists it is automatically used.
 This setting can be overridden per interface and per peer.
-See
-.Sx KEY FILE FORMAT
-for the format of a pre-shared key file.
+.Xr wiresep-keygen 1
+can be used to generate a pre-shared key.
 .It Ic user Ar name
 Set the user as which to run
 .Xr wiresep 8 .
@@ -91,28 +90,26 @@ A descriptive
 for the interface as showed by
 .Xr ifconfig 8 .
 If not set it defaults to the public key of the interface.
-.It Ic ifaddr Ar ip/mask Op ...
+.It Ic ifaddr Ar ip/mask
 The ip address and mask of the interface in CIDR notation.
-Multiple addresses may be configured.
 This setting is required since configuration via
 .Xr hostname.if 5
 is not yet supported.
-.It Ic listen Ar ip:port Op ...
+It may be set multiple times.
+.It Ic listen Ar ip:port
 The ip address and port on which to listen for encrypted incoming packets.
-Multiple address and port combinations may be configured.
 This setting is optional and determines whether to operate in server or
 client-only mode.
+It may be set multiple times.
 .It Ic privkeyfile Ar file
 The name of a file that contains the private key for this interface.
-This setting is mandatory, but if it is not set explicitly it will implicitly
-default to
+If not set the default path of the private key is
 .Pa /etc/wiresep/tunX.privkey
 where
-.Sq X
-is the number of the interface.
-See
-.Sx KEY FILE FORMAT
-for the format of a private key file.
+.Ar tunX
+is the name of the interface.
+A private key can be generated with
+.Xr wiresep-keygen 1 .
 .It Ic peer Oo Ar name Oc Brq ...
 A peer with an optional
 .Ar name
@@ -129,13 +126,12 @@ The use of a pre-shared key is optional.
 If the file
 .Pa /etc/wiresep/tunX.psk
 exists it is automatically used, where
-.Sq X
-is the number of the interface.
+.Ar tunX
+is the name of the interface.
 An interface specific pre-shared key overrides any global
 .Ar pskfile .
-See
-.Sx KEY FILE FORMAT
-for the format of a pre-shared key file.
+.Xr wiresep-keygen 1
+can be used to generate a pre-shared key.
 .El
 .Pp
 Note that all global settings can be used within an interface block to override
@@ -143,7 +139,7 @@ the global setting.
 .Ss PEER SPECIFIC SETTINGS
 The following peer specific settings are recognized:
 .Bl -tag -width Ds
-.It Ic allowedips Ar ip/mask Op ...
+.It Ic allowedips Ar ip/mask
 The ip addresses that this peer is allowed to use as a source address.
 .Ar 0.0.0.0/0
 means any IPv4 address.
@@ -152,7 +148,7 @@ means any IPv6 address.
 .Ar *
 is a shorthand for
 .Ar ::/0 0.0.0.0/0 .
-This setting is required.
+This setting is required and may be set multiple times.
 .It Ic endpoint Ar ip:port
 A known endpoint for this peer.
 .It Ic pskfile Ar file
@@ -164,53 +160,45 @@ If the file
 or
 .Pa /etc/wiresep/peername.psk
 exists it is automatically used, where
-.Sq X
-is the number of the interface and
+.Ar tunX
+is the name of the interface and
 .Ar peername
 is the
 .Ar name
-that can be specified with the interface specific
-.Ic peer
-setting.
+of this
+.Ic peer .
 A peer specific pre-shared key overrides any global or interface specific
 .Ar pskfile .
-See
-.Sx KEY FILE FORMAT
-for the format of a pre-shared key file.
+.Xr wiresep-keygen 1
+can be used to generate a pre-shared key.
 .It Ic pubkey Ar key
 The peers public key.
 This setting is required.
 .El
-.Ss KEY FILE FORMAT
-The
-.Ic privkeyfile
-and
-.Ic pskfile
-settings refer to a
-.Ar file
-that contains either a private key or a
-pre-shared key, respectively.
-Each file should contain only one key.
-The key itself must be encoded in Base64.
-Any blank line in the file or lines that start with a
-.Sq #
-are ignored, as well as any text that follows a key.
-The file must be owned by the superuser and may not have any permission bits set
-for the group or others.
 .Sh EXAMPLES
-A config file that uses the tun5 device with the internal ip addresses
-2001:db8::7 and 172.16.0.1 and allows communication with the peer Jane and Joe.
+What follows is an example of a configuration of a server that is listening on
+the public ip 198.51.100.7 port 1022.
+It uses the tun4 device with the internal ip addresses 2001:db8::7 and
+172.16.0.1 and allows communication with the peer Jane and Joe.
 Jane is allowed to use any source ip, while Joe may only use 2001:db8::4 or
 172.16.0.11/30 as the source ip of his packets.
-The private key for the tun5 interface is stored in the default location:
-.Pa /etc/wiresep/tun5.key .
+The private key for the tun4 interface can be generated with
+.Xr wiresep-keygen 1 .
 Furthermore, with Joe a peer specific pre-shared key is used for quantum-proof
-encryption by simply storing a Base64 encoded key in a file named
-.Pa /etc/wiresep/joe.psk .
+encryption by simply creating a pre-shared key with
 .Bd -literal -offset indent
-interface tun5 {
-	listen 198.51.100.7:1234
-	ifaddr 2001:db8::7/126 172.16.0.1/24
+wiresep-keygen -s tun4 joe
+.Ed
+.Pp
+The content of
+.Pa /etc/wiresep/wiresep.conf
+looks as follows:
+.Bd -literal -offset indent
+interface tun4 {
+	ifaddr 2001:db8::7/126
+	ifaddr 172.16.0.1/24
+
+	listen 198.51.100.7:1022
 
 	peer jane {
 		pubkey BhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
@@ -219,30 +207,19 @@ interface tun5 {
 
 	peer joe {
 		pubkey AhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
-		allowedips 2001:db8::4 172.16.0.11/30
+		allowedips 2001:db8::4
+		allowedips 172.16.0.11/30
 	}
 }
 .Ed
 .Pp
-In order to let
-.Xr wiresep 8
-create the tun5 device, it must exist in the
-.Pa /dev
-tree.
-This can be done as follows:
-.Bd -literal -offset indent
-	cd /dev
-	doas ./MAKEDEV tun5
-.Ed
-.Pp
 Note that
-.Pa /etc/hostname.tun5
+.Pa /etc/hostname.tun4
 should not be created as
 .Xr wiresep 8
 should do the setup and teardown of the interface by itself.
 .Sh SEE ALSO
 .Xr wiresep-keygen 1 ,
-.Xr MAKEDEV 8 ,
 .Xr wiresep 8
 .Sh AUTHORS
 .An -nosplit

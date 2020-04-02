@@ -1,16 +1,17 @@
 # sample wiresep configuration file, see wiresep.conf(5)
 
 # This is an example of a server listening on the public ip 198.51.100.7 port
-# 1234. It uses the tun0 device with the internal ip addresses 2001:db8::7
+# 1022. It uses the tun0 device with the internal ip addresses 2001:db8::7
 # and 172.16.0.1 and allows communication with the peer Jane and Joe. Jane is
 # allowed to use any source ip, while Joe may only use 2001:db8::4 or
 # 172.16.0.11/30 as the source ip of his packets. The private key for the tun0
-# interface can be stored in the default location: /etc/wiresep/tun0.privkey and
-# must be generated with wiresep-keygen(8).
+# interface can be generated with wiresep-keygen(8).
 
 interface tun0 {
-	listen 198.51.100.7:1234
-	ifaddr 2001:db8::7/126 172.16.0.1/24
+	ifaddr 2001:db8::7/126
+	ifaddr 172.16.0.1/24
+
+	listen 198.51.100.7:1022
 
 	peer jane {
 		pubkey BhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
@@ -19,6 +20,7 @@ interface tun0 {
 
 	peer joe {
 		pubkey AhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
-		allowedips 2001:db8::4 172.16.0.11/30
+		allowedips 2001:db8::4
+		allowedips 172.16.0.11/30
 	}
 }

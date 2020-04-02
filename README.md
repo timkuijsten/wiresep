@@ -1,6 +1,6 @@
 # WireSep
 
-## A privilege separated implementation of WireGuard for OpenBSD
+## Privilege separated implementation of WireGuard for OpenBSD
 
 Features:
 * Privilege separation, long-term secrets in a separate process
@@ -23,24 +23,27 @@ Status: **beta**
 $ doas pkg_add wiresep
 ```
 
-Generate a new private key with
-[wiresep-keygen(1)] and store it in `/etc/wiresep/tun0.privkey`. Make sure only the
-superuser can access this file. Then create a
-[wiresep.conf(5)] file in */etc/wiresep/wiresep.conf*. A simple configuration
-example looks like the following:
+Generate a new private key for the `tun0` interface.
+```sh
+$ doas wiresep-keygen tun0
+```
+
+Then create a configuration and store it in */etc/wiresep/wiresep.conf*. A
+simple example looks like the following:
 
 ```
 # This is an example of a server listening on the public ip 198.51.100.7 port
-# 1234. It uses the tun0 device with the internal ip addresses 2001:db8::7
+# 1022. It uses the tun0 device with the internal ip addresses 2001:db8::7
 # and 172.16.0.1 and allows communication with the peer Jane and Joe. Jane is
 # allowed to use any source ip, while Joe may only use 2001:db8::4 or
 # 172.16.0.11/30 as the source ip of his packets. The private key for the tun0
-# interface can be stored in the default location: /etc/wiresep/tun0.privkey and
-# must be generated with wiresep-keygen(8).
+# interface can be generated with wiresep-keygen(8).
 
 interface tun0 {
-	listen 198.51.100.7:1234
-	ifaddr 2001:db8::7/126 172.16.0.1/24
+	ifaddr 2001:db8::7/126
+	ifaddr 172.16.0.1/24
+
+	listen 198.51.100.7:1022
 
 	peer jane {
 		pubkey BhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
@@ -49,10 +52,12 @@ interface tun0 {
 
 	peer joe {
 		pubkey AhyBpDfD7joIPPpjBW/g/Wdhiu3iVOzQhKodbsLqJ3A=
-		allowedips 2001:db8::4 172.16.0.11/30
+		allowedips 2001:db8::4
+		allowedips 172.16.0.11/30
 	}
 }
 ```
+See [wiresep.conf(5)] for a complete description of the configuration file.
 
 Once everyting is set, run [wiresep(8)]:
 
