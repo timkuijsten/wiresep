@@ -1284,8 +1284,8 @@ sessactive(const struct session *sess)
 
 	if (sess->expack > 0 && sess->expack < now) {
 		if (verbose > 1)
-			loginfox("%s %s %x expected ack %llu ms ago",
-			    ifn->ifname, sess->peer->name, sess->id,
+			loginfox("%s %s %x session timeout, expected ack %llu "
+			    "ms ago", ifn->ifname, sess->peer->name, sess->id,
 			    (now - sess->expack) / 1000);
 
 		return 0;
