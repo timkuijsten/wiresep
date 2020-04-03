@@ -750,31 +750,31 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 	struct msgsesskeys msk;
 	struct msgwgresp *mwr;
 	struct msgwginit *mwi;
-	uint32_t sender;
+	uint32_t initsess, respsess;
 
 	mwi = (struct msgwginit *)msg;
-	sender = le32toh(mwi->sender);
+	initsess = le32toh(mwi->sender);
 
 	if (!ws_validmac(mwi->mac1, sizeof(mwi->mac1), mwi, MAC1OFFSETINIT,
 	    ifn->mac1key)) {
 		if (peer) {
-			logwarnx("enclave %s /%x/ init message with invalid mac"
-			    " received from peer %u", ifn->ifname, sender,
+			logwarnx("enclave %s I:%x init message with invalid mac"
+			    " received from peer %u", ifn->ifname, initsess,
 			    peer->id);
 		} else {
-			logwarnx("enclave %s /%x/ init message with invalid mac"
-			    " received from peer", ifn->ifname, sender);
+			logwarnx("enclave %s I:%x init message with invalid mac"
+			    " received from peer", ifn->ifname, initsess);
 		}
 		return -1;
 	}
 	if (upgradehsinit(ifn, mwi, &peer, 1) == -1) {
 		if (peer) {
-			logwarnx("enclave %s /%x/ could not authenticate init "
-			    "message from peer %u", ifn->ifname, sender,
+			logwarnx("enclave %s I:%x could not authenticate init "
+			    "message from peer %u", ifn->ifname, initsess,
 			    peer->id);
 		} else {
-			logwarnx("enclave %s /%x/ could not authenticate init "
-			    "message from peer", ifn->ifname, sender);
+			logwarnx("enclave %s I:%x could not authenticate init "
+			    "message from peer", ifn->ifname, initsess);
 		}
 		return -1;
 	}
@@ -782,36 +782,39 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 	/* Overwrite msg mwi with mwr */
 	mwr = (struct msgwgresp *)msg;
 	if (createhsresp(peer, mwr, mwi) == -1) {
-		logwarnx("enclave %s %x could not create response message for "
-		    "peer %u", ifn->ifname, sender, peer->id);
+		logwarnx("enclave %s I:%x could not create response message for"
+		    " peer %u", ifn->ifname, initsess, peer->id);
 		return -1;
 	}
 
+	respsess = le32toh(mwr->sender);
+
 	if (fsn && lsn) {
 		if (makemsgconnreq(&mcr, fsn, lsn) == -1) {
-			logwarnx("enclave %s %x makemsgconnreq error for "
-			    "peer %u", ifn->ifname, sender, peer->id);
+			logwarnx("enclave %s (%x) I:%x makemsgconnreq error for"
+			    " peer %u", ifn->ifname, respsess, initsess,
+			    peer->id);
 			exit(1);
 		}
 		if (wire_sendpeeridmsg(ifn->port, peer->id, MSGCONNREQ, &mcr,
 		    sizeof(mcr)) == -1) {
-			logwarnx("enclave %s %x error sending connect request "
-			    "for peer %u to ifn", ifn->ifname, sender,
-			    peer->id);
+			logwarnx("enclave %s (%x) I:%x error sending connect "
+			    "request for peer %u to ifn", ifn->ifname,
+			    respsess, initsess, peer->id);
 			return -1;
 		}
 	}
 
 	if (makemsgsesskeys(&msk, peer->hs, 1) == -1) {
-		logwarnx("enclave %s %x makemsgsesskeys error for peer %u",
-		    ifn->ifname, sender, peer->id);
+		logwarnx("enclave %s (%x) I:%x makemsgsesskeys error for peer "
+		    "%u", ifn->ifname, respsess, initsess, peer->id);
 		exit(1);
 	}
 
 	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGSESSKEYS, &msk,
 	    sizeof(msk)) == -1) {
-		logwarnx("enclave %s %x error sending keys for peer %u to ifn",
-		    ifn->ifname, sender, peer->id);
+		logwarnx("enclave %s (%x) I:%x error sending keys for peer %u "
+		    "to ifn", ifn->ifname, respsess, initsess, peer->id);
 		return -1;
 	}
 
@@ -819,15 +822,15 @@ handlewginit(struct ifn *ifn, struct peer *peer,
 
 	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGWGRESP, mwr,
 	    sizeof(*mwr)) == -1) {
-		logwarnx("enclave %s %x error sending response message for peer"
-		    " %u to ifn", ifn->ifname, sender, peer->id);
+		logwarnx("enclave %s (%x) I:%x error sending response message "
+		    "for peer %u to ifn", ifn->ifname, respsess, initsess,
+		    peer->id);
 		return -1;
 	}
 
 	if (verbose > 1)
-		loginfox("enclave %s %x sent response message for peer %u to "
-		    "ifn, new sender session %x", ifn->ifname, sender, peer->id,
-		    le32toh(mwr->sender));
+		loginfox("enclave %s (%x) I:%x sent response message for peer "
+		    "%u to ifn", ifn->ifname, respsess, initsess, peer->id);
 
 	return 0;
 }
@@ -856,48 +859,52 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 	struct msgsesskeys msk;
 	struct msgwgresp *mwr;
 	struct peer *p;
-	uint32_t receiver;
+	uint32_t initsess, respsess;
 
 	mwr = (struct msgwgresp *)msg;
-	receiver = le32toh(mwr->receiver);
+	initsess = le32toh(mwr->receiver);
+	respsess = le32toh(mwr->sender);
 
 	if (!ws_validmac(mwr->mac1, sizeof(mwr->mac1), mwr, MAC1OFFSETRESP,
 	    ifn->mac1key)) {
 		if (peer) {
-			logwarnx("enclave %s /%x/ response message with invalid "
-			    "mac received from peer %u", ifn->ifname, receiver,
-			    peer->id);
+			logwarnx("enclave %s /%x/ R:%x response message with "
+			    "invalid mac received from peer %u", ifn->ifname,
+			    initsess, respsess, peer->id);
 		} else {
-			logwarnx("enclave %s /%x/ response message with invalid "
-			    "mac received from peer", ifn->ifname, receiver);
+			logwarnx("enclave %s /%x/ R:%x response message with "
+			    "invalid mac received from peer", ifn->ifname,
+			    initsess, respsess);
 		}
 		return -1;
 	}
 
 	if (!findifnpeerbysessid(&p, ifn, mwr->receiver)) {
 		if (peer) {
-			logwarnx("enclave %s /%x/ receiver in response message "
-			    "from peer %u is unknown", ifn->ifname, receiver,
-			    peer->id);
+			logwarnx("enclave %s /%x/ R:%x receiver in response "
+			    "message from peer %u is unknown", ifn->ifname,
+			    initsess, respsess, peer->id);
 		} else {
-			logwarnx("enclave %s /%x/ receiver in response message "
-			    "from peer is unknown", ifn->ifname, receiver);
+			logwarnx("enclave %s /%x/ R:%x receiver in response "
+			    "message from peer is unknown", ifn->ifname,
+			    initsess, respsess);
 		}
 		return -1;
 	}
 
 	/* verify the authenticated packet came in on the right socket */
 	if (peer && peer->id != p->id) {
-		logwarnx("enclave %s /%x/ response message received from peer %u "
-		    "designated for peer %u, discarding", ifn->ifname, receiver,
-		    p->id, peer->id);
+		logwarnx("enclave %s /%x/ R:%x response message received from "
+		    "peer %u designated for peer %u, discarding", ifn->ifname,
+		    initsess, respsess, p->id, peer->id);
 		return -1;
 	}
 	peer = p;
 
 	if (upgradehsresp(peer->hs, mwr, 0) == -1) {
-		logwarnx("enclave %s /%x/ response message received from peer %u "
-		    "could not be authenticated", ifn->ifname, receiver, p->id);
+		logwarnx("enclave %s /%x/ R:%x response message received from "
+		    "peer %u could not be authenticated", ifn->ifname, initsess,
+		    respsess, p->id);
 		return -1;
 	}
 
@@ -905,35 +912,36 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 
 	if (fsn && lsn) {
 		if (makemsgconnreq(&mcr, fsn, lsn) == -1) {
-			logwarnx("enclave %s %x makemsgconnreq error for "
-			    "peer %u", ifn->ifname, receiver, peer->id);
+			logwarnx("enclave %s %x R:%x makemsgconnreq error for "
+			    "peer %u", ifn->ifname, initsess, respsess,
+			    peer->id);
 			exit(1);
 		}
 		if (wire_sendpeeridmsg(ifn->port, peer->id, MSGCONNREQ, &mcr,
 		    sizeof(mcr)) == -1) {
-			logwarnx("enclave %s %x error sending connect request "
-			    "for peer %u to ifn", ifn->ifname, receiver,
-			    peer->id);
+			logwarnx("enclave %s %x R:%x error sending connect "
+			    "request for peer %u to ifn", ifn->ifname, initsess,
+			    respsess, peer->id);
 			return -1;
 		}
 	}
 
 	if (makemsgsesskeys(&msk, peer->hs, 0) == -1) {
-		logwarnx("enclave %s %x makemsgsesskeys error for peer %u",
-		    ifn->ifname, receiver, peer->id);
+		logwarnx("enclave %s %x R:%x makemsgsesskeys error for peer %u",
+		    ifn->ifname, initsess, respsess, peer->id);
 		exit(1);
 	}
 
 	if (wire_sendpeeridmsg(ifn->port, peer->id, MSGSESSKEYS, &msk,
 	    sizeof(msk)) == -1) {
-		logwarnx("enclave %s %x error sending keys for peer %u to ifn",
-		    ifn->ifname, receiver, peer->id);
+		logwarnx("enclave %s %x R:%x error sending keys for peer %u to "
+		    "ifn", ifn->ifname, initsess, respsess, peer->id);
 		return -1;
 	}
 
 	if (verbose > 1)
-		loginfox("enclave %s %x sent new session keys for peer %u to "
-		    "ifn", ifn->ifname, receiver, peer->id);
+		loginfox("enclave %s %x R:%x sent new session keys for peer %u "
+		    "to ifn", ifn->ifname, initsess, respsess, peer->id);
 
 	explicit_bzero(&msk, sizeof(msk));
 
@@ -991,14 +999,14 @@ handleifnmsg(const struct ifn *ifn)
 
 		if (wire_sendpeeridmsg(ifn->port, peerid, MSGWGINIT, msg,
 		    sizeof(struct msgwginit)) == -1) {
-			logwarnx("enclave %s %x error sending init message "
+			logwarnx("enclave %s [%x] error sending init message "
 			    "for peer %u to ifn", ifn->ifname,
 			    le32toh(mwi->sender), peer->id);
 			return -1;
 		}
 		if (verbose > 1)
-			loginfox("enclave %s %x sent init message for peer %u "
-			    "to ifn", ifn->ifname, le32toh(mwi->sender),
+			loginfox("enclave %s [%x] sent init message for peer %u"
+			    " to ifn", ifn->ifname, le32toh(mwi->sender),
 			    peer->id);
 		break;
 	default:
