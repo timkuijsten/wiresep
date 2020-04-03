@@ -221,7 +221,7 @@ static int kq, tund, pport, eport, doterm, logstats;
 static struct ifn *ifn;
 static uint8_t msg[MAXSCRATCH];
 static utime_t now;
-static uint8_t nonce[12] = { 0 };
+static uint8_t nonce[16] = { 0 };
 static size_t sesscounter;
 
 static const EVP_AEAD *aead;
@@ -1522,9 +1522,9 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 		padlen = outsize;
 	}
 
-	*(uint64_t *)&nonce[4] = htole64(sess->nextnonce);
-	if (EVP_AEAD_CTX_seal(&sess->sendctx, out, &outsize, outsize, nonce,
-	    sizeof(nonce), in, padlen, NULL, 0) == 0) {
+	*(uint64_t *)&nonce[8] = htole64(sess->nextnonce);
+	if (EVP_AEAD_CTX_seal(&sess->sendctx, out, &outsize, outsize, &nonce[4],
+	    (sizeof nonce) - 4, in, padlen, NULL, 0) == 0) {
 		stats.sockouterr++;
 		return -1;
 	}
@@ -1598,9 +1598,9 @@ decryptpacket(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	}
 
 	/* prepend a tunnel header */
-	*(uint64_t *)&nonce[4] = mwdhdr->counter;
-	if (EVP_AEAD_CTX_open(key, out, &outsize, outsize, nonce,
-	    sizeof(nonce), payload, payloadsize, NULL, 0) == 0) {
+	*(uint64_t *)&nonce[8] = mwdhdr->counter;
+	if (EVP_AEAD_CTX_open(key, out, &outsize, outsize, &nonce[4],
+	    (sizeof nonce) - 4, payload, payloadsize, NULL, 0) == 0) {
 		logwarnx("%s %x unauthenticated data received, udp data: %zu, "
 		    "wg payload: %zu, counter: %llu", ifn->ifname, sessid,
 		    mwdsize, payloadsize, le64toh(mwdhdr->counter));
@@ -3468,7 +3468,7 @@ ifn_init(int masterport)
 	}
 
 	aead = EVP_aead_chacha20_poly1305();
-	assert(EVP_AEAD_nonce_length(aead) == sizeof(nonce));
+	assert(EVP_AEAD_nonce_length(aead) == (sizeof nonce) - 4);
 	assert(EVP_AEAD_max_tag_len(aead) == TAGLEN);
 
 	if ((tund = opentunnel(ifn->ifname, ifn->ifdesc, ifn->ifaddrssize))
