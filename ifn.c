@@ -91,12 +91,20 @@ union inet_addr {
 };
 
 /*
- * Used when we have data to send to a peer but no active current session. A
- * rekey timer will be set until rekey-attempt-time or a session is established.
+ * All session ids in the sesstent, sessnext and session structures are in 64
+ * bits in host byte order. This is to represent the inactive session -1. All 32
+ * bit session ids are in wire format, which is little-endian. Also the different
+ * timers used use a session id in host byte order.
+ */
+
+/*
+ * Tentative sessions are used when we have data to send to a peer but no active
+ * current session. A rekey timer will be set until rekey-attempt-time or a
+ * session is established.
  */
 struct sesstent {
 	enum { STINACTIVE, INITREQ, INITSENT, RESPRECVD } state;
-	int64_t id;
+	int64_t id;			/* host byte order */
 	utime_t lastreq;
 };
 
@@ -107,8 +115,8 @@ struct sessnext {
 	enum { SNINACTIVE, GOTKEYS, RESPSENT } state;
 	utime_t lastvrfyinit;
 	utime_t start;
-	int64_t id;
-	int64_t peerid;
+	int64_t id;			/* host byte order */
+	int64_t peerid;			/* host byte order */
 	EVP_AEAD_CTX sendctx;
 	EVP_AEAD_CTX recvctx;
 };
@@ -124,15 +132,17 @@ struct session {
 	EVP_AEAD_CTX sendctx;
 	EVP_AEAD_CTX recvctx;
 	struct peer *peer;
-	utime_t start;	/* whenever handshake completes (or first hs while still
-			 * tentative) */
-	utime_t expack; /* time before either data or a keepalive is expected
-			 * from the peer */
-	uint64_t nextnonce; /* next number for the next packet to send */
-	uint32_t id;
-	uint32_t peerid;
+	utime_t start;			/* whenever handshake completes (or
+					 * first hs while still tentative) */
+	utime_t expack;			/* time before either data or a
+					 * keepalive is expected from the peer
+					 */
+	uint64_t nextnonce;		/* next number for the next packet to
+					 * send */
+	uint32_t id;			/* wire format, little-endian */
+	uint32_t peerid;		/* wire format, little-endian */
 	char initiator;
-	char kaset;	/* is the keepalive timer set? */
+	char kaset;			/* is the keepalive timer set? */
 };
 
 struct cidraddr {
@@ -255,8 +265,8 @@ logsessinfo(const char *pre, const struct session *sess)
 	    ifn->ifname,
 	    pre ? pre : "",
 	    sess->initiator ? 'I' : 'R',
-	    sess->id,
-	    sess->peerid,
+	    le32toh(sess->id),
+	    le32toh(sess->peerid),
 	    sess->arrecv.maxseqnum,
 	    sess->nextnonce,
 	    sess->start,
@@ -487,11 +497,11 @@ findpeerbysessid(uint32_t sessid, struct peer **peer)
 
 	for (n = 0; n < ifn->peerssize; n++) {
 		p = ifn->peers[n];
-		if (p->sesstent.id >= 0 && sessid == p->sesstent.id) {
+		if (p->sesstent.id >= 0 && le32toh(sessid) == p->sesstent.id) {
 			*peer = p;
 			return 1;
 		}
-		if (p->sessnext.id >= 0 && sessid == p->sessnext.id) {
+		if (p->sessnext.id >= 0 && le32toh(sessid) == p->sessnext.id) {
 			*peer = p;
 			return 1;
 		}
@@ -933,7 +943,7 @@ peerpark(struct peer *peer)
 
 	retries = 0;
 retry:
-	rport = arc4random_uniform(IPPORT_RESERVED - 1) + 1;
+	rport = htons(arc4random_uniform(IPPORT_RESERVED - 1) + 1);
 	setsockaddr((struct sockaddr *)&si, &addr, peer->sockisv6, rport);
 
 	if (connect(peer->sock, (struct sockaddr *)&si, si.h.len) == -1) {
@@ -946,7 +956,7 @@ retry:
 					lognoticex("%s %s can't connect to "
 					    "localhost port %d, retrying... "
 					    "(%d)", ifn->ifname, peer->name,
-					    rport, retries + 1);
+					    ntohs(rport), retries + 1);
 
 				sleep(1);
 				retries++;
@@ -954,7 +964,7 @@ retry:
 			}
 
 			logwarn("%s %s can't connect to localhost port %d, "
-			    "giving up", ifn->ifname, peer->name, rport);
+			    "giving up", ifn->ifname, peer->name, ntohs(rport));
 		}
 
 		peer->sock = -1;
@@ -1199,12 +1209,13 @@ sessdestroy(struct session *sess)
 	 * calling of this function.
 	 */
 	if (sess->kaset) {
-		if (cleartimer(sess->id) == -1) {
+		if (cleartimer(le32toh(sess->id)) == -1) {
 			logwarn("%s %s %x cleartimer error", ifn->ifname,
-			    peer->name, sess->id);
+			    peer->name, le32toh(sess->id));
 		} else if (verbose > 1) {
 			loginfox("%s %s %x keepalive timeout cleared %zu",
-			    ifn->ifname, peer->name, sess->id, sesscounter);
+			    ifn->ifname, peer->name, le32toh(sess->id),
+			    sesscounter);
 		}
 	}
 
@@ -1213,7 +1224,7 @@ sessdestroy(struct session *sess)
 
 	if (notifyproxy(peer->id, sessid, SESSIDDESTROY) == -1)
 		logwarnx("%s %s %x proxy notification of destroyed session id "
-		    "failed", ifn->ifname, peer->name, sessid);
+		    "failed", ifn->ifname, peer->name, le32toh(sessid));
 }
 
 /*
@@ -1285,8 +1296,8 @@ sessactive(const struct session *sess)
 	if (sess->expack > 0 && sess->expack < now) {
 		if (verbose > 1)
 			loginfox("%s %s %x session timeout, expected ack %llu "
-			    "ms ago", ifn->ifname, sess->peer->name, sess->id,
-			    (now - sess->expack) / 1000);
+			    "ms ago", ifn->ifname, sess->peer->name,
+			    le32toh(sess->id), (now - sess->expack) / 1000);
 
 		return 0;
 	}
@@ -1296,7 +1307,7 @@ sessactive(const struct session *sess)
 			loginfox("%s %s %x session %llu ms old "
 			    "(Reject-After-Time)", ifn->ifname,
 			    sess->peer->name,
-			    sess->id, (now - sess->start) / 1000);
+			    le32toh(sess->id), (now - sess->start) / 1000);
 
 		return 0;
 	}
@@ -1305,7 +1316,8 @@ sessactive(const struct session *sess)
 		if (verbose > 1)
 			loginfox("%s %s %x message limit reached %llu "
 			    "(Reject-After-Messages)", ifn->ifname,
-			    sess->peer->name, sess->id, sess->nextnonce);
+			    sess->peer->name, le32toh(sess->id),
+			    sess->nextnonce);
 
 		return 0;
 	}
@@ -1389,8 +1401,8 @@ maketentcurr(struct peer *peer, const struct msgsesskeys *msk)
 		return -1;
 
 	peer->scurr->initiator = 1;
-	peer->scurr->id = peer->sesstent.id;
-	peer->scurr->peerid = le32toh(msk->peersessid);
+	peer->scurr->id = htole32(peer->sesstent.id);
+	peer->scurr->peerid = msk->peersessid;
 	peer->scurr->start = now;
 	peer->scurr->peer = peer;
 	peer->scurr->kaset = 0;
@@ -1426,8 +1438,8 @@ makenextcurr(struct peer *peer)
 		return -1;
 
 	peer->scurr->initiator = 0;
-	peer->scurr->id = peer->sessnext.id;
-	peer->scurr->peerid = peer->sessnext.peerid;
+	peer->scurr->id = htole32(peer->sessnext.id);
+	peer->scurr->peerid = htole32(peer->sessnext.peerid);
 	peer->scurr->start = peer->sessnext.start;
 	peer->scurr->peer = peer;
 	peer->scurr->kaset = 0;
@@ -1459,11 +1471,10 @@ sendwgdatamsg(int s, uint32_t receiver, uint64_t counter, const uint8_t *packet,
 {
 	static struct iovec iov[4];
 	static uint64_t lecounter;
-	static uint32_t mtcode, lereceiver;
+	static uint32_t mtcode;
 	ssize_t rc;
 
 	lecounter = htole64(counter);
-	lereceiver = htole32(receiver);
 	mtcode = htole32(4);
 
 	/* empty data packets still have a 16 byte authentication tag */
@@ -1473,8 +1484,8 @@ sendwgdatamsg(int s, uint32_t receiver, uint64_t counter, const uint8_t *packet,
 	iov[0].iov_base = &mtcode;
 	iov[0].iov_len = sizeof(mtcode);
 
-	iov[1].iov_base = &lereceiver;
-	iov[1].iov_len = sizeof(lereceiver);
+	iov[1].iov_base = &receiver;
+	iov[1].iov_len = sizeof(receiver);
 
 	iov[2].iov_base = &lecounter;
 	iov[2].iov_len = sizeof(lecounter);
@@ -1514,11 +1525,11 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 
 	if (verbose > 2)
 		logdebugx("%s %s %x packet size %zu padded %zu", ifn->ifname,
-		    sess->peer->name, sess->id, insize, padlen);
+		    sess->peer->name, le32toh(sess->id), insize, padlen);
 
 	if (padlen > outsize) {
 		logwarnx("%s %s %x truncating padded %zu to %zu", ifn->ifname,
-		    sess->peer->name, sess->id, padlen, outsize);
+		    sess->peer->name, le32toh(sess->id), padlen, outsize);
 		padlen = outsize;
 	}
 
@@ -1532,7 +1543,7 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 	if (sendwgdatamsg(sess->peer->sock, sess->peerid, sess->nextnonce, out,
 	    outsize) == -1) {
 		logwarnx("%s %s %x error sending data", ifn->ifname,
-		    sess->peer->name, sess->id);
+		    sess->peer->name, le32toh(sess->id));
 		return -1;
 	}
 
@@ -1542,14 +1553,14 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 	sess->nextnonce++;
 
 	if (sess->kaset) {
-		if (cleartimer(sess->id) == -1)
+		if (cleartimer(le32toh(sess->id)) == -1)
 			return -1;
 
 		sess->kaset = 0;
 
 		if (verbose > 1)
 			loginfox("%s %s %x keepalive timeout cleared",
-			    ifn->ifname, sess->peer->name, sess->id);
+			    ifn->ifname, sess->peer->name, le32toh(sess->id));
 	}
 
 	if (insize > 0 && sess->expack == 0)
@@ -1557,7 +1568,8 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 
 	if (verbose > 1)
 		loginfox("%s %s %x %zu bytes (%zu padded) sent to peer",
-		    ifn->ifname, sess->peer->name, sess->id, padlen, outsize);
+		    ifn->ifname, sess->peer->name, le32toh(sess->id), padlen,
+		    outsize);
 
 	/*
 	 * Handle session limits.
@@ -1602,8 +1614,9 @@ decryptpacket(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	if (EVP_AEAD_CTX_open(key, out, &outsize, outsize, &nonce[4],
 	    (sizeof nonce) - 4, payload, payloadsize, NULL, 0) == 0) {
 		logwarnx("%s %x unauthenticated data received, udp data: %zu, "
-		    "wg payload: %zu, counter: %llu", ifn->ifname, sessid,
-		    mwdsize, payloadsize, le64toh(mwdhdr->counter));
+		    "wg payload: %zu, counter: %llu", ifn->ifname,
+		    le32toh(sessid), mwdsize, payloadsize,
+		    le64toh(mwdhdr->counter));
 		stats.corrupted++;
 		return -1;
 	}
@@ -1725,8 +1738,8 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 			    "arrived too late", ifn->ifname, peer->name,
 			    peer->sessnext.id);
 
-		if (notifyproxy(peer->id, peer->sessnext.id, SESSIDDESTROY)
-		    == -1)
+		if (notifyproxy(peer->id, htole32(peer->sessnext.id),
+		    SESSIDDESTROY) == -1)
 			logwarnx("%s %s (%x) proxy notification that the next "
 			    "session is dead failed", ifn->ifname, peer->name,
 			    peer->sessnext.id);
@@ -1739,7 +1752,8 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 
 	/* leave room in "out" for the tunnel header */
 	payloadsize = decryptpacket(&out[TUNHDRSIZ], outsize - TUNHDRSIZ,
-	    mwdhdr, mwdsize, &peer->sessnext.recvctx, peer->sessnext.id);
+	    mwdhdr, mwdsize, &peer->sessnext.recvctx,
+	    htole32(peer->sessnext.id));
 
 	if (payloadsize < 0)
 		return -1;
@@ -1771,11 +1785,12 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	if (notifyproxy(peer->id, peer->scurr->id, SESSIDCURR) == -1)
 		logwarnx("%s %s %x proxy notification that the next session "
 		    "is now the current session failed", ifn->ifname,
-		    peer->name, peer->scurr->id);
+		    peer->name, le32toh(peer->scurr->id));
 
 	if (verbose > 0)
 		lognoticex("%s %s %x new session established, %zu bytes",
-		    ifn->ifname, peer->name, peer->scurr->id, payloadsize);
+		    ifn->ifname, peer->name, le32toh(peer->scurr->id),
+		    payloadsize);
 
 	return 0;
 }
@@ -1792,13 +1807,10 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 {
 	uint64_t counter;
 	ssize_t payloadsize;
-	uint32_t receiver;
-
-	receiver = le32toh(mwdhdr->receiver);
 
 	if (!sessactive(sess)) {
-		logwarnx("%s %s /%x/ data for unusable session received", ifn->ifname,
-		    ifn->ifname, receiver);
+		logwarnx("%s /%x/ data for unusable session received",
+		    ifn->ifname, le32toh(mwdhdr->receiver));
 		stats.sockinerr++;
 		return -1;
 	}
@@ -1808,7 +1820,8 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 	if (!antireplay_isnew(&sess->arrecv, counter)) {
 		if (verbose > -1)
 			logwarnx("%s %s /%x/ data replayed %llu %llu",
-			    ifn->ifname, sess->peer->name, receiver, counter,
+			    ifn->ifname, sess->peer->name,
+			    le32toh(mwdhdr->receiver), counter,
 			    sess->arrecv.maxseqnum);
 
 		stats.corrupted++;
@@ -1826,7 +1839,7 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 
 	if (antireplay_update(&sess->arrecv, counter) == -1) {
 		logwarnx("%s %s /%x/ antireplay_update %llu", ifn->ifname,
-		    sess->peer->name, receiver, counter);
+		    sess->peer->name, le32toh(mwdhdr->receiver), counter);
 		return -1;
 	}
 
@@ -1845,13 +1858,14 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 		if (sess->kaset == 0 &&
 		    now - sess->start < REJECT_AFTER_TIME - KEEPALIVE_TIMEOUT &&
 		    sess->nextnonce < REJECT_AFTER_MESSAGES) {
-			settimer(sess->id, KEEPALIVE_TIMEOUT);
+			settimer(le32toh(sess->id), KEEPALIVE_TIMEOUT);
 			sess->kaset = 1;
 
 			if (verbose > 1)
 				loginfox("%s %s %x keepalive timeout set to "
 				    "%d ms", ifn->ifname, sess->peer->name,
-				    sess->id, KEEPALIVE_TIMEOUT / 1000);
+				    le32toh(sess->id),
+				    KEEPALIVE_TIMEOUT / 1000);
 		}
 	}
 
@@ -1865,7 +1879,7 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 
 	if (verbose > 1)
 		loginfox("%s %s %x %zd bytes from peer", ifn->ifname,
-		    sess->peer->name, sess->id, payloadsize);
+		    sess->peer->name, le32toh(sess->id), payloadsize);
 
 	return 0;
 }
@@ -1974,8 +1988,8 @@ handleenclavemsg(void)
 				    "ms", ifn->ifname, p->name, p->sesstent.id,
 				    REKEY_TIMEOUT / 1000);
 
-			if (notifyproxy(p->id, p->sesstent.id, SESSIDTENT)
-			    == -1)
+			if (notifyproxy(p->id, htole32(p->sesstent.id),
+			    SESSIDTENT) == -1)
 				logwarnx("%s %s [%x] proxy notification of a "
 				    "new tentative session failed", ifn->ifname,
 				    p->name, p->sesstent.id);
@@ -2055,7 +2069,7 @@ handleenclavemsg(void)
 		break;
 	case MSGSESSKEYS:
 		msk = (struct msgsesskeys *)msg;
-		if (p->sesstent.id == msk->sessid) {
+		if (p->sesstent.id == le32toh(msk->sessid)) {
 			/* 3. handlesesskeys */
 			if (p->sesstent.state != RESPRECVD) {
 				logwarnx("%s %s [%x] new session keys from "
@@ -2077,11 +2091,12 @@ handleenclavemsg(void)
 				logwarnx("%s %s %x proxy notification that the "
 				    "tentative session is now the current "
 				    "session failed", ifn->ifname, p->name,
-				    p->scurr->id);
+				    le32toh(p->scurr->id));
 
 			if (verbose > 1)
 				loginfox("%s %s %x new session established",
-				    ifn->ifname, p->name, p->scurr->id);
+				    ifn->ifname, p->name,
+				    le32toh(p->scurr->id));
 
 			if (p->qpackets > 0) {
 				while (!SIMPLEQ_EMPTY(&p->qpacketlist)) {
@@ -2123,8 +2138,8 @@ handleenclavemsg(void)
 			 * of a hardcoded value of 2.
 			 */
 			p->sessnext.lastvrfyinit = now - 2;
-			p->sessnext.id = msk->sessid;
-			p->sessnext.peerid = msk->peersessid;
+			p->sessnext.id = le32toh(msk->sessid);
+			p->sessnext.peerid = le32toh(msk->peersessid);
 			p->sessnext.state = GOTKEYS;
 
 			if (EVP_AEAD_CTX_init(&p->sessnext.sendctx, aead,
@@ -2139,8 +2154,8 @@ handleenclavemsg(void)
 				return -1;
 			}
 
-			if (notifyproxy(p->id, p->sessnext.id, SESSIDNEXT)
-			    == -1)
+			if (notifyproxy(p->id, htole32(p->sessnext.id),
+			    SESSIDNEXT) == -1)
 				logwarnx("%s %s (%x) proxy notification of next"
 				    " session id failed", ifn->ifname, p->name,
 				    p->sessnext.id);
@@ -2255,7 +2270,7 @@ handletundmsg(void)
 		break;
 	default:
 		if (verbose > -1)
-			logwarnx("%s %s invalid message from device %d %zu", ifn->ifname,
+			logwarnx("%s invalid message from device %d %zu",
 			    ifn->ifname, ntohl(*(uint32_t *)msg), msgsize);
 		stats.devinerr++;
 		return -1;
@@ -2271,12 +2286,13 @@ handletundmsg(void)
 
 	if (verbose > 1)
 		loginfox("%s %s %x %zu bytes for peer", ifn->ifname,
-		    p->name, p->scurr == NULL ? 0x0 : p->scurr->id, msgsize);
+		    p->name, p->scurr == NULL ? 0x0 : le32toh(p->scurr->id),
+		    msgsize);
 
 	if (p->sock == -1) {
 		errno = EDESTADDRREQ;
 		logwarn("%s %s %x peer not connected", ifn->ifname, p->name,
-		    p->scurr == NULL ? 0x0 : p->scurr->id);
+		    p->scurr == NULL ? 0x0 : le32toh(p->scurr->id));
 		stats.sockouterr++;
 		return -1;
 	}
@@ -2343,29 +2359,27 @@ handletundmsg(void)
 static int
 handlewgdata(struct msgwgdatahdr *mwdhdr, size_t msgsize, struct peer *p)
 {
-	uint32_t receiver;
-
-	receiver = le32toh(mwdhdr->receiver);
-	if (receiver == p->sessnext.id) {
+	if (le32toh(mwdhdr->receiver) == p->sessnext.id) {
 		if (p->sessnext.state != RESPSENT) {
 			logwarnx("%s %s (%x) data received for next session "
 			    "while in unexpected state %x", ifn->ifname,
-			    p->name, receiver, p->sessnext.state);
+			    p->name, le32toh(mwdhdr->receiver),
+			    p->sessnext.state);
 			stats.sockinerr++;
 			return -1;
 		}
 
 		return handlenextdata(msg, sizeof(msg), mwdhdr, msgsize, p);
-	} else if (p->scurr && receiver == p->scurr->id) {
+	} else if (p->scurr && mwdhdr->receiver == p->scurr->id) {
 		return handlesessdata(msg, sizeof(msg), mwdhdr, msgsize,
 		    p->scurr);
-	} else if (p->sprev && receiver == p->sprev->id) {
+	} else if (p->sprev && mwdhdr->receiver == p->sprev->id) {
 		return handlesessdata(msg, sizeof(msg), mwdhdr, msgsize,
 		    p->sprev);
 	}
 
 	logwarnx("%s %s /%x/ data with unknown session received",
-	    ifn->ifname, p->name, receiver);
+	    ifn->ifname, p->name, le32toh(mwdhdr->receiver));
 	stats.sockinerr++;
 	return -1;
 }
@@ -2579,7 +2593,7 @@ handleproxymsg(void)
 	switch (mtcode) {
 	case MSGWGDATA:
 		mwdhdr = (struct msgwgdatahdr *)msg;
-		if (!findpeerbysessid(le32toh(mwdhdr->receiver), &p)) {
+		if (!findpeerbysessid(mwdhdr->receiver, &p)) {
 			logwarnx("%s %s invalid session id via proxy %x", ifn->ifname,
 			    ifn->ifname, le32toh(mwdhdr->receiver));
 			stats.proxinerr++;
@@ -2636,8 +2650,8 @@ sesshandletimeout(struct kevent *ev)
 	if (verbose > 2)
 		logdebugx("%s handle timeout %lx", ifn->ifname, ev->ident);
 
-	if (!findpeerbysessid(ev->ident, &peer)) {
-		logwarnx("%s %s timer with unknown session id went off %lx", ifn->ifname,
+	if (!findpeerbysessid(htole32(ev->ident), &peer)) {
+		logwarnx("%s timer with unknown session id went off %lx",
 		    ifn->ifname, ev->ident);
 		return;
 	}
@@ -2654,7 +2668,7 @@ sesshandletimeout(struct kevent *ev)
 		 * proxy and only used as a rekey timeout timer.
 		 */
 		if (peer->sesstent.state >= INITSENT) {
-			if (notifyproxy(peer->id, peer->sesstent.id,
+			if (notifyproxy(peer->id, htole32(peer->sesstent.id),
 			    SESSIDDESTROY) == -1)
 				logwarnx("%s %s [%x] proxy notification of "
 				    "destroyed tentative session id failed",
@@ -2678,9 +2692,9 @@ sesshandletimeout(struct kevent *ev)
 	 * Must be a keepalive on either the current or the previous session.
 	 */
 
-	if (peer->scurr && ev->ident == peer->scurr->id) {
+	if (peer->scurr && ev->ident == le32toh(peer->scurr->id)) {
 		sess = peer->scurr;
-	} else if (peer->sprev && ev->ident == peer->sprev->id) {
+	} else if (peer->sprev && ev->ident == le32toh(peer->sprev->id)) {
 		sess = peer->sprev;
 	} else {
 		logwarnx("%s %s timer with unknown session id went off %lx",
@@ -2690,13 +2704,13 @@ sesshandletimeout(struct kevent *ev)
 
 	if (verbose > 1)
 		loginfox("%s %s %x keepalive timer went off", ifn->ifname,
-		    peer->name, sess->id);
+		    peer->name, le32toh(sess->id));
 
 	sess->kaset = 0;
 
 	if (encryptandsend(msg, sizeof(msg), NULL, 0, sess) == -1)
 		logwarn("%s %s %x encryptandsend error", ifn->ifname,
-		    peer->name, sess->id);
+		    peer->name, le32toh(sess->id));
 }
 
 /*

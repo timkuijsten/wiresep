@@ -50,10 +50,15 @@ void enclave_printinfo(FILE *);
 
 extern int background, verbose;
 
+/*
+ * Both session ids in the hs structure are in 32 bits in wire format (little-
+ * endian).
+ */
+
 /* handshake state */
 struct hs {
-	uint32_t sessid;
-	uint32_t peersessid;
+	uint32_t sessid;	/* wire format, little-endian */
+	uint32_t peersessid;	/* wire format, little-endian */
 	wskey epriv;
 	wskey epubi;
 	wskey c;
@@ -376,8 +381,8 @@ findifnpeerbyid(struct peer **p, const struct ifn *ifn, uint32_t peerid)
 static void
 prinths(FILE *fp, const struct hs *hs)
 {
-	fprintf(fp, "sessid %u\n", hs->sessid);
-	fprintf(fp, "peersessid %u\n", hs->peersessid);
+	fprintf(fp, "sessid %x\n", le32toh(hs->sessid));
+	fprintf(fp, "peersessid %x\n", le32toh(hs->peersessid));
 	fprintf(fp, "chaining key\n");
 	hexdump(fp, hs->c, sizeof(hs->c), sizeof(hs->c));
 	fprintf(fp, "hash\n");
@@ -532,7 +537,7 @@ upgradehsinit(struct ifn *ifn, struct msgwginit *mwi, struct peer **peer,
 
 		if (memcmp(tmpts, (*peer)->recvts, sizeof(tmpts)) <= 0) {
 			logwarnx("enclave %s %x received init message is "
-			    "replayed", ifn->ifname, hs->sessid);
+			    "replayed", ifn->ifname, le32toh(hs->sessid));
 			return -1;
 		}
 
@@ -573,7 +578,7 @@ createhsinit(struct peer *peer, struct msgwginit *mwi)
 	hs->sessid = arc4random();
 
 	mwi->type = htole32(1);
-	mwi->sender = htole32(hs->sessid);
+	mwi->sender = hs->sessid;
 
 	X25519_keypair(mwi->ephemeral, hs->epriv);
 
@@ -583,7 +588,7 @@ createhsinit(struct peer *peer, struct msgwginit *mwi)
 
 	if (upgradehsinit(peer->ifn, mwi, &peer, 0) == -1) {
 		logwarnx("enclave %s %x could not upgrade new init message",
-		    peer->ifn->ifname, hs->sessid);
+		    peer->ifn->ifname, le32toh(hs->sessid));
 		return -1;
 	}
 
@@ -704,17 +709,17 @@ createhsresp(struct peer *peer, struct msgwgresp *mwr,
 	 */
 
 	hs->sessid = arc4random();
-	hs->peersessid = le32toh(mwi->sender);
+	hs->peersessid = mwi->sender;
 
 	mwr->type = htole32(2);
-	mwr->sender = htole32(hs->sessid);
-	mwr->receiver = htole32(hs->peersessid);
+	mwr->sender = hs->sessid;
+	mwr->receiver = hs->peersessid;
 
 	X25519_keypair(mwr->ephemeral, hs->epriv);
 
 	if (upgradehsresp(hs, mwr, 1) == -1) {
 		logwarnx("enclave %s %x could not upgrade response message",
-		    peer->ifn->ifname, hs->sessid);
+		    peer->ifn->ifname, le32toh(hs->sessid));
 		return -1;
 	}
 
@@ -908,7 +913,7 @@ handlewgresp(struct ifn *ifn, struct peer *peer,
 		return -1;
 	}
 
-	peer->hs->peersessid = le32toh(mwr->sender);
+	peer->hs->peersessid = mwr->sender;
 
 	if (fsn && lsn) {
 		if (makemsgconnreq(&mcr, fsn, lsn) == -1) {

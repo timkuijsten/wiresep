@@ -54,17 +54,24 @@ struct sockmap {
 	union sockaddr_inet *listenaddr;
 };
 
+/*
+ * All session ids in both the sessmap and peer structures are in 64 bits in
+ * host byte order. This is to represent the inactive session -1. All incoming
+ * messages over the listening sockets and ipc are in wire format which is
+ * little-endian.
+ */
+
 struct sessmap {
-	int64_t sessid;
+	int64_t sessid;		/* host byte order */
 	struct peer *peer;
 };
 
 struct peer {
 	uint32_t id;
-	int64_t sesstent;
-	int64_t sessnext;
-	int64_t sesscurr;
-	int64_t sessprev;
+	int64_t sesstent;	/* host byte order */
+	int64_t sessnext;	/* host byte order */
+	int64_t sesscurr;	/* host byte order */
+	int64_t sessprev;	/* host byte order */
 	size_t sent;
 	size_t sentsz;
 	size_t recv;
@@ -290,7 +297,7 @@ handleifnmsg(const struct sockmap *sockmap)
 	size_t msgsize;
 	unsigned char mtcode;
 	uint32_t peerid;
-	int64_t *sessid;
+	int64_t *sessidp, sessid;
 
 	ifn = sockmap->ifn;
 
@@ -309,55 +316,56 @@ handleifnmsg(const struct sockmap *sockmap)
 	switch (mtcode) {
 	case MSGSESSID:
 		msi = (struct msgsessid *)msg;
+		sessid = le32toh(msi->sessid);
 
 		if (verbose > 2)
-			logdebugx("proxy %s %x type %u received",
-			    ifn->ifname, msi->sessid, msi->type);
+			logdebugx("proxy %s %x type %u received", ifn->ifname,
+			    sessid, msi->type);
 
 		switch (msi->type) {
 		case SESSIDDESTROY:
-			if (msi->sessid == peer->sesstent) {
-				sessid = &peer->sesstent;
-			} else if (msi->sessid == peer->sessnext) {
-				sessid = &peer->sessnext;
-			} else if (msi->sessid == peer->sesscurr) {
-				sessid = &peer->sesscurr;
-			} else if (msi->sessid == peer->sessprev) {
-				sessid = &peer->sessprev;
+			if (sessid == peer->sesstent) {
+				sessidp = &peer->sesstent;
+			} else if (sessid == peer->sessnext) {
+				sessidp = &peer->sessnext;
+			} else if (sessid == peer->sesscurr) {
+				sessidp = &peer->sesscurr;
+			} else if (sessid == peer->sessprev) {
+				sessidp = &peer->sessprev;
 			} else {
 				logwarnx("proxy %s %x could not destroy "
 				    "session for peer %u, session id not found",
-				    ifn->ifname, msi->sessid, peer->id);
+				    ifn->ifname, sessid, peer->id);
 				break;
 			}
-			if (sessmapvreplace(ifn, peer, msi->sessid, -1) == -1)
+			if (sessmapvreplace(ifn, peer, sessid, -1) == -1)
 				logwarn("proxy %s %x could not remove session",
-				    ifn->ifname, msi->sessid);
-			*sessid = -1;
+				    ifn->ifname, sessid);
+			*sessidp = -1;
 			break;
 		case SESSIDTENT:
-			if (sessmapvreplace(ifn, peer, peer->sesstent,
-			    msi->sessid) == -1)
+			if (sessmapvreplace(ifn, peer, peer->sesstent, sessid)
+			    == -1)
 				logwarn("proxy %s %llx tentative session not "
 				    "found", ifn->ifname, peer->sesstent);
-			peer->sesstent = msi->sessid;
+			peer->sesstent = sessid;
 			break;
 		case SESSIDNEXT:
-			if (sessmapvreplace(ifn, peer, peer->sessnext,
-			    msi->sessid) == -1)
+			if (sessmapvreplace(ifn, peer, peer->sessnext, sessid)
+			    == -1)
 				logwarn("proxy %s %llx next session not found",
 				    ifn->ifname, peer->sessnext);
-			peer->sessnext = msi->sessid;
+			peer->sessnext = sessid;
 			break;
 		case SESSIDCURR:
-			if (msi->sessid == peer->sesstent) {
-				sessid = &peer->sesstent;
-			} else if (msi->sessid == peer->sessnext) {
-				sessid = &peer->sessnext;
+			if (sessid == peer->sesstent) {
+				sessidp = &peer->sesstent;
+			} else if (sessid == peer->sessnext) {
+				sessidp = &peer->sessnext;
 			} else {
 				logwarnx("proxy %s %x new current session for "
 				    "peer %u was not tentative or next",
-				    ifn->ifname, msi->sessid, peer->id);
+				    ifn->ifname, sessid, peer->id);
 				break;
 			}
 
@@ -383,8 +391,8 @@ handleifnmsg(const struct sockmap *sockmap)
 			if (peer->sesscurr != -1)
 				peer->sessprev = peer->sesscurr;
 
-			peer->sesscurr = msi->sessid;
-			*sessid = -1;
+			peer->sesscurr = sessid;
+			*sessidp = -1;
 			break;
 		}
 		break;
