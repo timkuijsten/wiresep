@@ -406,9 +406,9 @@ main(int argc, char **argv)
 				    getpid());
 
 			for (m = 0; m <= n; m++) {
-				close(ifnv[n]->mastwithifn);
-				close(ifnv[n]->enclwithifn);
-				close(ifnv[n]->proxwithifn);
+				close(ifnv[m]->mastwithifn);
+				close(ifnv[m]->enclwithifn);
+				close(ifnv[m]->proxwithifn);
 			}
 
 			assert(getdtablecount() == stdopen + 3);
