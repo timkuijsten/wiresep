@@ -1322,8 +1322,8 @@ recvconfig(int masterport)
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
-	if (verbose > 1)
-		loginfox("enclave config received from master");
+	if (verbose > 2)
+		logdebugx("enclave config received from master");
 }
 
 /*

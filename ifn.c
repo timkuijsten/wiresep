@@ -993,9 +993,9 @@ retry:
 	}
 	addrtostr(addrstr2, sizeof(addrstr2), (struct sockaddr *)&si, 0);
 
-	if (verbose > 1)
-		loginfox("%s %s parked %s -> %s", ifn->ifname, peer->name,
-		    addrstr1, addrstr2);
+	if (verbose > 2)
+		logdebugx("%s %s parked socket %s -> %s", ifn->ifname,
+		    peer->name, addrstr1, addrstr2);
 
 	peer->sock = -1;
 	peer->sockisv6 = 0;
@@ -1112,9 +1112,9 @@ peerconnect(struct peer *peer, const struct sockaddr *faddr)
 	}
 	addrtostr(addrstr2, sizeof addrstr2, (struct sockaddr *)faddr, 0);
 
-	if (verbose > 0)
-		lognoticex("%s %s connected %s -> %s", ifn->ifname, peer->name,
-		    addrstr1, addrstr2);
+	if (verbose > 1)
+		loginfox("%s %s socket connected %s -> %s", ifn->ifname,
+		    peer->name, addrstr1, addrstr2);
 
 	EV_SET(&ev, peer->sock, EVFILT_READ, EV_ADD, 0, 0, NULL);
 	if (kevent(kq, &ev, 1, NULL, 0, NULL) == -1) {
@@ -2773,9 +2773,14 @@ ifn_serv(void)
 		if ((peer->fsa.h.family == AF_INET6 ||
 		    peer->fsa.h.family == AF_INET) &&
 		    peerconnect(peer, (struct sockaddr *)&peer->fsa) == -1)
-			logwarnx("%s %s peerconnect error when connecting to "
-			    "known endpoint", ifn->ifname, peer->name);
+			logwarnx("%s %s peerconnect error when connecting "
+			    "socket to known endpoint", ifn->ifname,
+			    peer->name);
 	}
+
+	if (verbose > 0)
+		lognoticex("%s ready, waiting for the first data to start a new"
+		    " WireGuard session", ifn->ifname);
 
 	for (;;) {
 		if (logstats) {
@@ -2868,8 +2873,8 @@ opentunnel(const char *ifname, const char *ifdesc, int setflags)
 		return -1;
 
 	if (setflags) {
-		if (verbose > 1)
-			loginfox("%s configuring device", ifname);
+		if (verbose > 2)
+			logdebugx("%s configuring device", ifname);
 
 #ifdef TUNSIFHEAD /* FreeBSD */
 	const int on = 1;
@@ -3316,8 +3321,8 @@ recvconfig(int masterport)
 			/* pre-calculate masks */
 			if (allowedip->addr.h.family == AF_INET6) {
 				sin6 = (struct sockaddr_in6 *)&allowedip->addr;
-				maskip6(&allowedip->v6addrmasked, &sin6->sin6_addr,
-				    allowedip->prefixlen, 1);
+				maskip6(&allowedip->v6addrmasked,
+				    &sin6->sin6_addr, allowedip->prefixlen, 1);
 
 				if (inet_ntop(AF_INET6, &sin6->sin6_addr, addrp,
 				    sizeof(addrp)) == NULL) {
@@ -3344,8 +3349,8 @@ recvconfig(int masterport)
 					exit(1);
 				}
 			} else {
-				logwarnx("%s %s allowedip unknown address family", ifn->ifname,
-				    peer->name);
+				logwarnx("%s %s allowedip unknown address "
+				    "family", ifn->ifname, peer->name);
 				exit(1);
 			}
 
@@ -3429,8 +3434,8 @@ recvconfig(int masterport)
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
-	if (verbose > 1)
-		loginfox("%s config received from master", ifn->ifname);
+	if (verbose > 2)
+		logdebugx("%s config received from master", ifn->ifname);
 }
 
 /*

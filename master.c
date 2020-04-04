@@ -74,7 +74,8 @@ handlesig(int signo)
 		doterm = 1;
 		break;
 	default:
-		logwarnx("unexpected signal %d %s", signo, strsignal(signo));
+		logwarnx("master unexpected signal %d %s", signo,
+		    strsignal(signo));
 		break;
 	}
 }
@@ -84,11 +85,12 @@ printdescriptors(void)
 {
 	size_t n;
 
-	loginfox("enclave %d:%d", mastwithencl, enclwithmast);
-	loginfox("proxy %d:%d", mastwithprox, proxwithmast);
+	logdebugx("master enclave %d:%d", mastwithencl, enclwithmast);
+	logdebugx("master proxy %d:%d", mastwithprox, proxwithmast);
 
 	for (n = 0; n < ifnvsize; n++) {
-		loginfox("%s master %d:%d, enclave %d:%d, proxy %d:%d", ifnv[n]->ifname,
+		logdebugx("master %s master %d:%d, enclave %d:%d, proxy %d:%d",
+		    ifnv[n]->ifname,
 		    ifnv[n]->mastwithifn,
 		    ifnv[n]->ifnwithmast,
 		    ifnv[n]->enclwithifn,
@@ -360,7 +362,7 @@ main(int argc, char **argv)
 
 	/* don't bother to free before exec */
 	if ((oldprogname = strdup(getprogname())) == NULL) {
-		logwarn("strdup getprogname");
+		logwarn("master strdup getprogname error");
 		exit(1);
 	}
 
@@ -373,7 +375,7 @@ main(int argc, char **argv)
 		 */
 
 		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
-			logwarn("socketpair ifnmast %zu", n);
+			logwarn("master socketpair error ifnmast %zu", n);
 			exit(1);
 		}
 
@@ -381,7 +383,7 @@ main(int argc, char **argv)
 		ifnv[n]->ifnwithmast = tmpchan[1];
 
 		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
-			logwarn("socketpair ifnencl %zu", n);
+			logwarn("master socketpair error ifnencl %zu", n);
 			exit(1);
 		}
 
@@ -389,7 +391,7 @@ main(int argc, char **argv)
 		ifnv[n]->ifnwithencl = tmpchan[1];
 
 		if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
-			logwarn("socketpair ifnprox %zu", n);
+			logwarn("master socketpair error ifnprox %zu", n);
 			exit(1);
 		}
 
@@ -398,11 +400,11 @@ main(int argc, char **argv)
 
 		switch (fork()) {
 		case -1:
-			logwarn("fork %s", ifnv[n]->ifname);
+			logwarn("master fork error %s", ifnv[n]->ifname);
 			exit(1);
 		case 0:
-			if (verbose > 0)
-				lognoticex("ifn %s %d", ifnv[n]->ifname,
+			if (verbose > 2)
+				logdebugx("ifn %s %d", ifnv[n]->ifname,
 				    getpid());
 
 			for (m = 0; m <= n; m++) {
@@ -416,13 +418,13 @@ main(int argc, char **argv)
 			eargs[0] = (char *)getprogname();
 			eargs[1] = "-I";
 			if (asprintf(&eargs[2], "%u", ifnv[n]->ifnwithmast) < 1) {
-				logwarnx("asprintf");
+				logwarnx("master asprintf error ifn");
 				exit(1);
 			}
 			/* don't bother to free before exec */
 			eargs[3] = NULL;
 			execvpe(oldprogname, eargs, eenv);
-			logwarn("exec ifn");
+			logwarn("master exec error ifn");
 			exit(1);
 		}
 
@@ -439,7 +441,7 @@ main(int argc, char **argv)
 	 */
 
 	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
-		logwarn("socketpair");
+		logwarn("master socketpair error enclave");
 		exit(1);
 	}
 
@@ -447,7 +449,7 @@ main(int argc, char **argv)
 	enclwithmast = tmpchan[1];
 
 	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
-		logwarn("socketpair");
+		logwarn("master socketpair error proxy");
 		exit(1);
 	}
 
@@ -455,7 +457,7 @@ main(int argc, char **argv)
 	proxwithmast = tmpchan[1];
 
 	if (socketpair(AF_UNIX, SOCK_DGRAM, 0, tmpchan) == -1) {
-		logwarn("socketpair");
+		logwarn("master socketpair error enclave/proxy");
 		exit(1);
 	}
 
@@ -467,11 +469,11 @@ main(int argc, char **argv)
 	/* fork enclave */
 	switch (fork()) {
 	case -1:
-		logwarn("fork enclave");
+		logwarn("master fork error enclave");
 		exit(1);
 	case 0:
-		if (verbose > 0)
-			lognoticex("enclave %d", getpid());
+		if (verbose > 2)
+			logdebugx("enclave %d", getpid());
 
 		for (n = 0; n < ifnvsize; n++) {
 			close(ifnv[n]->mastwithifn);
@@ -488,13 +490,13 @@ main(int argc, char **argv)
 		eargs[0] = (char *)getprogname();
 		eargs[1] = "-E";
 		if (asprintf(&eargs[2], "%d", enclwithmast) < 1) {
-			logwarnx("asprintf");
+			logwarnx("master asprintf error enclave");
 			exit(1);
 		}
 		/* don't bother to free before exec */
 		eargs[3] = NULL;
 		execvpe(oldprogname, eargs, eenv);
-		logwarn("exec enclave");
+		logwarn("master exec error enclave");
 		exit(1);
 	}
 
@@ -509,11 +511,11 @@ main(int argc, char **argv)
 	/* fork proxy  */
 	switch (fork()) {
 	case -1:
-		logwarn("fork proxy");
+		logwarn("master fork error proxy");
 		exit(1);
 	case 0:
-		if (verbose > 0)
-			lognoticex("proxy %d", getpid());
+		if (verbose > 2)
+			logdebugx("proxy %d", getpid());
 
 		for (n = 0; n < ifnvsize; n++)
 			close(ifnv[n]->mastwithifn);
@@ -526,13 +528,13 @@ main(int argc, char **argv)
 		eargs[0] = (char *)getprogname();
 		eargs[1] = "-P";
 		if (asprintf(&eargs[2], "%d", proxwithmast) < 1) {
-			logwarnx("asprintf");
+			logwarnx("master asprintf error proxy");
 			exit(1);
 		}
 		/* don't bother to free before exec */
 		eargs[3] = NULL;
 		execvpe(oldprogname, eargs, eenv);
-		logwarn("exec proxy");
+		logwarn("master exec error proxy");
 		exit(1);
 	}
 
@@ -544,10 +546,10 @@ main(int argc, char **argv)
 
 	assert(getdtablecount() == stdopen + 2 + (int)ifnvsize);
 
-	if (verbose > 0)
-		lognoticex("master %d", getpid());
+	if (verbose > 2)
+		logdebugx("master %d", getpid());
 
-	if (verbose > 1)
+	if (verbose > 2)
 		printdescriptors();
 
 	/*
@@ -575,7 +577,7 @@ main(int argc, char **argv)
 	 * ...
 	 */
 	if (socketpair(AF_UNIX, SOCK_STREAM, 0, mastmast) == -1) {
-		logwarn("socketpair mastermaster");
+		logwarn("master socketpair error mastermaster");
 		exit(1);
 	}
 	if (writen(mastmast[0], &mastwithencl, sizeof(int)) != 0) {
@@ -591,9 +593,9 @@ main(int argc, char **argv)
 		exit(1);
 	}
 	for (n = 0; n < ifnvsize; n++) {
-		if (writen(mastmast[0], &ifnv[n]->mastwithifn, sizeof(int)) != 0) {
-			logwarn("could not pass ifn descriptor to new "
-			    "master");
+		if (writen(mastmast[0], &ifnv[n]->mastwithifn, sizeof(int))
+		    != 0) {
+			logwarn("could not pass ifn descriptor to new master");
 			exit(1);
 		}
 	}
@@ -602,13 +604,13 @@ main(int argc, char **argv)
 	eargs[0] = (char *)getprogname();
 	eargs[1] = "-M";
 	if (asprintf(&eargs[2], "%u", mastmast[1]) < 1) {
-		logwarnx("asprintf");
+		logwarnx("master asprintf error master");
 		exit(1);
 	}
 	/* don't bother to free before exec */
 	eargs[3] = NULL;
 	execvpe(oldprogname, eargs, eenv);
-	logwarn("exec master");
+	logwarn("master exec error master");
 	exit(1);
 }
 

@@ -895,8 +895,8 @@ recvconfig(int masterport)
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
-	if (verbose > 1)
-		loginfox("proxy config received from master");
+	if (verbose > 2)
+		logdebugx("proxy config received from master");
 }
 
 /*

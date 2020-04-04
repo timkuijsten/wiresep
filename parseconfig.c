@@ -62,9 +62,9 @@ xaddone(void ***arr, size_t *curmemcount, void **member, size_t membersize)
 	*arr = recallocarray(*arr, *curmemcount, *curmemcount + 1,
 	    sizeof(char *));
 	if (*arr == NULL)
-		err(1, "%s recallocarray", __func__);
+		err(1, "parseconfig %s recallocarray error", __func__);
 	if ((*member = calloc(1, membersize)) == NULL)
-		err(1, "%s calloc", __func__);
+		err(1, "parseconfig %s calloc error", __func__);
 	(*arr)[*curmemcount] = *member;
 	(*curmemcount)++;
 }
@@ -80,7 +80,7 @@ parseaddrport(struct sockaddr_storage *addr, const char *str)
 	char *a, *colon, *s;
 
 	if ((s = strdup(str)) == NULL)
-		err(1, "%s strdup", __func__);
+		err(1, "parseconfig %s strdup error", __func__);
 
 	if ((colon = strrchr(s, ':')) == NULL)
 		goto err;
@@ -127,7 +127,7 @@ parseipcidr(struct sockaddr_storage *ip, size_t *prefixlen, const char *str)
 	char *slash, *s;
 
 	if ((s = strdup(str)) == NULL)
-		err(1, "%s strdup", __func__);
+		err(1, "parseconfig %s strdup error", __func__);
 
 	slash = strchr(s, '/');
 	if (slash) {
@@ -184,7 +184,7 @@ parsekeyfile(wskey key, const char *path)
 
 	if ((fp = fopen(path, "re")) == NULL) {
 		/* errno set */
-		warn("fopen error %s", path);
+		warn("could not open key file %s", path);
 		return -1;
 	}
 
@@ -593,7 +593,7 @@ parsepeerconfig(struct cfgpeer *peer, const struct scfge *cfg, int peernumber,
 				continue;
 			}
 			if ((peer->pskfile = strdup(subcfg->strv[1])) == NULL)
-				err(1, "strdup peer pskfile");
+				err(1, "parseconfig strdup error peer pskfile");
 		} else {
 			warnx("%s: %s invalid keyword in peer scope", peerid,
 			    key);
@@ -750,10 +750,10 @@ parseinterfaceconfigs(void)
 
 		if (snprintf(tundevpath, sizeof(tundevpath), "/dev/%s",
 		    ifn->scfge->strv[1]) < 9)
-			errx(1, "snprintf tundevpath");
+			errx(1, "snprintf error tundevpath");
 
 		if (stat(tundevpath, &st) == -1) {
-			warn("%s", tundevpath);
+			warn("stat error %s", tundevpath);
 			e = 1;
 			continue;
 		}
@@ -769,7 +769,7 @@ parseinterfaceconfigs(void)
 		}
 
 		if ((ifn->ifname = strdup(ifn->scfge->strv[1])) == NULL)
-			err(1, "strdup ifname");
+			err(1, "parseconfig strdup error ifname");
 
 		for (i = 0; i < ifn->scfge->entryvsize; i++) {
 			subcfg = ifn->scfge->entryv[i];
@@ -871,7 +871,8 @@ parseinterfaceconfigs(void)
 				}
 				if ((ifn->pskfile = strdup(subcfg->strv[1]))
 				    == NULL)
-					err(1, "strdup ifn pskfile");
+					err(1, "parseconfig strdup error ifn "
+					    "pskfile");
 			} else if (strcasecmp("privkey", key) == 0) {
 				if (subcfg->strvsize != 2) {
 					warnx("%s: %s must have a value",
@@ -896,7 +897,8 @@ parseinterfaceconfigs(void)
 				}
 				if ((ifn->privkeyfile = strdup(subcfg->strv[1]))
 				    == NULL)
-					err(1, "strdup ifn privkeyfile");
+					err(1, "parseconfig strdup error ifn "
+					    "privkeyfile");
 			} else if (strcasecmp("desc", key) == 0) {
 				if (subcfg->strvsize != 2) {
 					warnx("%s: %s must have a value",
@@ -907,7 +909,8 @@ parseinterfaceconfigs(void)
 
 				if ((ifn->ifdesc = strdup(subcfg->strv[1]))
 				    == NULL)
-					err(1, "strdup ifdesc");
+					err(1, "parseconfig strdup error "
+					    "ifdesc");
 			} else if (strcasecmp("listen", key) == 0) {
 				if (subcfg->strvsize < 2) {
 					warnx("%s: %s must have at least one "
@@ -1120,7 +1123,8 @@ parseinterfaceconfigs(void)
 			if (ifn->ifdesc == NULL) {
 				if ((ifn->ifdesc = calloc(1, MAXIFNDESC))
 				    == NULL)
-					err(1, "calloc ifdesc");
+					err(1, "parseconfig calloc error "
+					    "ifdesc");
 
 				if (base64_ntop(ifn->pubkey, KEYLEN,
 				    ifn->ifdesc, MAXIFNDESC) == -1)
@@ -1264,7 +1268,8 @@ parseconfig(const struct scfge *root)
 				}
 				if ((logfacilitystr = strdup(subcfg->strv[2]))
 				    == NULL)
-					err(1, "strdup log facility");
+					err(1, "parseconfig strdup error log "
+					    "facility");
 			} else if (strcasecmp(subcfg->strv[1], "file") == 0) {
 				/* XXX */
 				warnx("%s: %s file not implemented",
@@ -1330,7 +1335,8 @@ parseconfig(const struct scfge *root)
 				continue;
 			}
 			if ((gpskfile = strdup(subcfg->strv[1])) == NULL)
-				err(1, "strdup global pskfile");
+				err(1, "parseconfig strdup error global "
+				    "pskfile");
 		} else if (strcasecmp("interface", key) == 0) {
 			xaddone((void ***)&ifnv, &ifnvsize, (void **)&ifn,
 			    sizeof(*ifn));
@@ -1452,7 +1458,7 @@ parseconfigfd(int fd, struct cfgifn ***rifnv, size_t *rifnvsize,
 	*unprivgid = ggid;
 
 	if ((*rlogfacilitystr = strdup(logfacilitystr)) == NULL)
-		err(1, "%s strdup error", __func__);
+		err(1, "parseconfig %s strdup error", __func__);
 
 	return 0;
 }
@@ -1472,7 +1478,7 @@ xparseconfigfile(const char *filename, struct cfgifn ***rifnv,
 	int fd;
 
 	if ((fd = open(filename, O_RDONLY|O_CLOEXEC)) == -1)
-		err(1, "%s", filename);
+		err(1, "could not open %s for reading", filename);
 
 	if (!isfdsafe(fd, 0644))
 		errx(1, "%s must be owned by the superuser and may not be "
@@ -1600,7 +1606,8 @@ sendconfig_proxy(union smsg smsg, int mast2prox, int proxwithencl)
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
-	loginfox("config sent to proxy %d", mast2prox);
+	if (verbose > 2)
+		logdebugx("config sent to proxy %d", mast2prox);
 }
 
 /*
@@ -1683,7 +1690,8 @@ sendconfig_enclave(union smsg smsg, int mast2encl, int enclwithprox)
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
-	loginfox("config sent to enclave %d", mast2encl);
+	if (verbose > 2)
+		logdebugx("config sent to enclave %d", mast2encl);
 }
 
 /*
@@ -1827,7 +1835,9 @@ sendconfig_ifn(union smsg smsg, int ifnid)
 
 	explicit_bzero(&smsg, sizeof(smsg));
 
-	loginfox("config sent to %s %d", ifn->ifname, ifn->mastwithifn);
+	if (verbose > 2)
+		logdebugx("config sent to %s %d", ifn->ifname,
+		    ifn->mastwithifn);
 }
 
 /*
