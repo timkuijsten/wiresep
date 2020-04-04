@@ -12,7 +12,7 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: October 30 2019 $
+.Dd $Mdocdate: April 4 2020 $
 .Dt WIRESEP 8
 .Os
 .Sh NAME
@@ -20,14 +20,20 @@
 .Nd privilege separated implementation of WireGuard
 .Sh SYNOPSIS
 .Nm
-.Op Fl dnqVv
+.Op Fl dnVv
 .Op Fl f Ar file
 .Sh DESCRIPTION
 The
 .Nm
 daemon runs WireGuard on one or more tunnel interfaces.
 .Pp
-It's arguments are as follows.
+If sent a
+.Dv SIGUSR1
+signal,
+.Nm
+logs statistics.
+.Pp
+The arguments are as follows.
 .Bl -tag -width Ds
 .It Fl d
 Do not daemonize but stay in foreground.
@@ -38,14 +44,11 @@ as the configuration file instead of the default.
 .It Fl n
 Config test mode.
 No output is shown if there are no errors.
-.It Fl q
-Be quiet.
-This flag may be specified multiple times.
 .It Fl V
 Print the version of WireSep.
 .It Fl v
 Be verbose.
-This flag may be specified multiple times.
+Specify twice when troubleshooting network errors.
 .El
 .Ss KEY FILE FORMAT
 The format for both private keys and pre-shared keys is the same.

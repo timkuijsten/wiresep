@@ -110,7 +110,7 @@ printversion(int d)
 void
 printusage(int d)
 {
-	dprintf(d, "usage: %s [-dnqVv] [-f file]\n", getprogname());
+	dprintf(d, "usage: %s [-dnVv] [-f file]\n", getprogname());
 }
 
 /*
