@@ -3580,7 +3580,7 @@ ifn_init(int masterport)
 		exit(1);
 	}
 
-	if (pledge("stdio inet", "") == -1) {
+	if (pledge("stdio inet", NULL) == -1) {
 		logwarn("%s pledge", ifn->ifname);
 		exit(1);
 	}

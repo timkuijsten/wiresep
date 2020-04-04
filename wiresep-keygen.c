@@ -154,7 +154,7 @@ main(int argc, char **argv)
 		}
 	}
 
-	if (pledge("stdio rpath wpath cpath", "") == -1)
+	if (pledge("stdio rpath wpath cpath", NULL) == -1)
 		err(1, "pledge");
 
 	umask(S_IWUSR|S_IXUSR|S_IRWXG|S_IRWXO);

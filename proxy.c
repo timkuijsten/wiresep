@@ -1132,7 +1132,7 @@ proxy_init(int masterport)
 		exit(1);
 	}
 
-	if (pledge("stdio", "") == -1) {
+	if (pledge("stdio", NULL) == -1) {
 		logwarn("proxy pledge error");
 		exit(1);
 	}

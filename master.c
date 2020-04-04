@@ -192,7 +192,7 @@ main(int argc, char **argv)
 
 			if (chroot(EMPTYDIR) == -1 || chdir("/") == -1)
 				err(1, "chroot %s", EMPTYDIR);
-			if (pledge("stdio", "") == -1)
+			if (pledge("stdio", NULL) == -1)
 				err(1, "%s: pledge", __func__);
 
 			if (read(mastmast[1], &mastwithencl, sizeof(int))
