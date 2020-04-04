@@ -202,11 +202,10 @@ main(int argc, char **argv)
 			goto out;
 		}
 
-		fprintf(stdout, "private key created: %s/%s\n"
+		fprintf(stdout, "generated private key: %s/%s\n"
 		    "associated public key: %s\n"
-		    "The public key is also written as a comment into the private key file and can be\n"
-		    "seen with `ifconfig %s` while wiresep is running.\n",
-		    keypath, filename, b64pubkey, argv[0]);
+		    "The public key is also written as a comment into the private key file.\n",
+		    keypath, filename, b64pubkey);
 		free(filename);
 
 		ret = 0;
@@ -249,7 +248,7 @@ out:
 			err(1, "error when closing pre-shared key file %s/%s",
 			    keypath, filename);
 
-		fprintf(stdout, "pre-shared key created: %s/%s\n", keypath,
+		fprintf(stdout, "generated pre-shared key: %s/%s\n", keypath,
 		    filename);
 		free(filename);
 
@@ -279,7 +278,7 @@ out:
 			err(1, "error when closing pre-shared key file %s/%s",
 			    keypath, filename);
 
-		fprintf(stdout, "pre-shared key created: %s/%s\n", keypath,
+		fprintf(stdout, "generated pre-shared key: %s/%s\n", keypath,
 		    filename);
 		free(filename);
 	}
