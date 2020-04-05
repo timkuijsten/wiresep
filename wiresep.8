@@ -12,12 +12,12 @@
 .\" ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 .\" OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 .\"
-.Dd $Mdocdate: April 4 2020 $
+.Dd $Mdocdate: April 5 2020 $
 .Dt WIRESEP 8
 .Os
 .Sh NAME
 .Nm wiresep
-.Nd privilege separated implementation of WireGuard
+.Nd WireGuard daemon
 .Sh SYNOPSIS
 .Nm
 .Op Fl dnVv
@@ -48,7 +48,8 @@ No output is shown if there are no errors.
 Print the version of WireSep.
 .It Fl v
 Be verbose.
-Specify twice when troubleshooting network errors.
+Specify once or twice when troubleshooting the network, more is probably only
+interesting if you're a developer.
 .El
 .Ss KEY FILE FORMAT
 The format for both private keys and pre-shared keys is the same.
