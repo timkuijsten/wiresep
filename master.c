@@ -70,6 +70,8 @@ static void
 handlesig(int signo)
 {
 	switch (signo) {
+	case SIGINT:
+		/* FALLTHROUGH */
 	case SIGTERM:
 		doterm = 1;
 		break;
@@ -216,7 +218,7 @@ main(int argc, char **argv)
 			close(mastmast[1]);
 
 			/*
-			 * Ignore SIGUSR1 and catch SIGTERM.
+			 * Ignore SIGUSR1 and catch SIGINT and SIGTERM.
 			 */
 
 			sa.sa_flags = 0;
@@ -228,6 +230,8 @@ main(int argc, char **argv)
 				err(1, "sigaction SIGUSR1");
 
 			sa.sa_handler = handlesig;
+			if (sigaction(SIGINT, &sa, NULL) == -1)
+				err(1, "sigaction SIGINT");
 			if (sigaction(SIGTERM, &sa, NULL) == -1)
 				err(1, "sigaction SIGTERM");
 
@@ -241,8 +245,8 @@ main(int argc, char **argv)
 				signal_eos(smsg, ifchan[n][0]);
 
 			/*
-			 * Wait for first child to die or when a SIGTERM is
-			 * received.
+			 * Wait for first child to die or when a SIGINT or
+			 * SIGTERM is received.
 			 */
 			if ((pid = waitpid(WAIT_ANY, &stat, 0)) == -1) {
 				if (errno != EINTR)
@@ -252,7 +256,8 @@ main(int argc, char **argv)
 					errx(1, "return from unexpected "
 					    "signal");
 
-				warnx("received TERM, shutting down");
+				warnx("master received termination signal, "
+				    "shutting down");
 			} else {
 				if (WIFEXITED(stat)) {
 					warnx("child %d normal exit %d", pid,

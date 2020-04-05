@@ -243,6 +243,8 @@ handlesig(int signo)
 	case SIGUSR1:
 		logstats = 1;
 		break;
+	case SIGINT:
+		/* FALLTHROUGH */
 	case SIGTERM:
 		doterm = 1;
 		break;
@@ -2790,7 +2792,9 @@ ifn_serv(void)
 		}
 
 		if (doterm) {
-			logwarnx("%s received TERM, shutting down", ifn->ifname);
+			if (verbose > 1)
+				loginfox("%s received termination signal, "
+				    "shutting down", ifn->ifname);
 			exit(1);
 		}
 
@@ -3549,6 +3553,10 @@ ifn_init(int masterport)
 	}
 	if (sigaction(SIGUSR1, &sa, NULL) == -1) {
 		logwarn("%s sigaction SIGUSR1", ifn->ifname);
+		exit(1);
+	}
+	if (sigaction(SIGINT, &sa, NULL) == -1) {
+		logwarn("%s sigaction SIGINT", ifn->ifname);
 		exit(1);
 	}
 	if (sigaction(SIGTERM, &sa, NULL) == -1) {

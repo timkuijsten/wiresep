@@ -178,6 +178,8 @@ handlesig(int signo)
 	case SIGUSR1:
 		logstats = 1;
 		break;
+	case SIGINT:
+		/* FALLTHROUGH */
 	case SIGTERM:
 		doterm = 1;
 		break;
@@ -1117,7 +1119,9 @@ enclave_serv(void)
 		}
 
 		if (doterm) {
-			logwarnx("enclave received TERM, shutting down");
+			if (verbose > 1)
+				loginfox("enclave received termination signal, "
+				    "shutting down");
 			exit(1);
 		}
 
@@ -1411,6 +1415,10 @@ enclave_init(int masterport)
 	}
 	if (sigaction(SIGUSR1, &sa, NULL) == -1) {
 		logwarn("enclave sigaction SIGUSR1 error");
+		exit(1);
+	}
+	if (sigaction(SIGINT, &sa, NULL) == -1) {
+		logwarn("enclave sigaction SIGINT error");
 		exit(1);
 	}
 	if (sigaction(SIGTERM, &sa, NULL) == -1) {

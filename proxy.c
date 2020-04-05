@@ -168,6 +168,8 @@ handlesig(int signo)
 	case SIGUSR1:
 		logstats = 1;
 		break;
+	case SIGINT:
+		/* FALLTHROUGH */
 	case SIGTERM:
 		doterm = 1;
 		break;
@@ -657,7 +659,9 @@ proxy_serv(void)
 		}
 
 		if (doterm) {
-			logwarnx("proxy received TERM, shutting down");
+			if (verbose > 1)
+				loginfox("proxy received termination signal, "
+				    "shutting down");
 			exit(1);
 		}
 
@@ -1101,6 +1105,10 @@ proxy_init(int masterport)
 	}
 	if (sigaction(SIGUSR1, &sa, NULL) == -1) {
 		logwarn("proxy sigaction SIGUSR1 error");
+		exit(1);
+	}
+	if (sigaction(SIGINT, &sa, NULL) == -1) {
+		logwarn("proxy sigaction SIGINT error");
 		exit(1);
 	}
 	if (sigaction(SIGTERM, &sa, NULL) == -1) {
