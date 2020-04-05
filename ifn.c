@@ -1212,8 +1212,8 @@ sessdestroy(struct session *sess)
 		if (cleartimer(le32toh(sess->id)) == -1) {
 			logwarn("%s %s %x cleartimer error", ifn->ifname,
 			    peer->name, le32toh(sess->id));
-		} else if (verbose > 1) {
-			loginfox("%s %s %x keepalive timeout cleared %zu",
+		} else if (verbose > 2) {
+			logdebugx("%s %s %x keepalive timeout cleared %zu",
 			    ifn->ifname, peer->name, le32toh(sess->id),
 			    sesscounter);
 		}
@@ -1558,8 +1558,8 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 
 		sess->kaset = 0;
 
-		if (verbose > 1)
-			loginfox("%s %s %x keepalive timeout cleared",
+		if (verbose > 2)
+			logdebugx("%s %s %x keepalive timeout cleared",
 			    ifn->ifname, sess->peer->name, le32toh(sess->id));
 	}
 
@@ -1788,9 +1788,9 @@ handlenextdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 		    peer->name, le32toh(peer->scurr->id));
 
 	if (verbose > 0)
-		lognoticex("%s %s %x new session established, %zu bytes",
+		lognoticex("%s %s %x I:%x new session established, %zu bytes",
 		    ifn->ifname, peer->name, le32toh(peer->scurr->id),
-		    payloadsize);
+		    le32toh(peer->scurr->peerid), payloadsize);
 
 	return 0;
 }
@@ -1861,8 +1861,8 @@ handlesessdata(uint8_t *out, size_t outsize, struct msgwgdatahdr *mwdhdr,
 			settimer(le32toh(sess->id), KEEPALIVE_TIMEOUT);
 			sess->kaset = 1;
 
-			if (verbose > 1)
-				loginfox("%s %s %x keepalive timeout set to "
+			if (verbose > 2)
+				logdebugx("%s %s %x keepalive timeout set to "
 				    "%d ms", ifn->ifname, sess->peer->name,
 				    le32toh(sess->id),
 				    KEEPALIVE_TIMEOUT / 1000);
@@ -2093,10 +2093,11 @@ handleenclavemsg(void)
 				    "session failed", ifn->ifname, p->name,
 				    le32toh(p->scurr->id));
 
-			if (verbose > 1)
-				loginfox("%s %s %x new session established",
-				    ifn->ifname, p->name,
-				    le32toh(p->scurr->id));
+			if (verbose > 0)
+				lognoticex("%s %s %x R:%x new session "
+				    "established", ifn->ifname, p->name,
+				    le32toh(p->scurr->id),
+				    le32toh(p->scurr->peerid));
 
 			if (p->qpackets > 0) {
 				while (!SIMPLEQ_EMPTY(&p->qpacketlist)) {
@@ -2284,8 +2285,8 @@ handletundmsg(void)
 		return -1;
 	}
 
-	if (verbose > 1)
-		loginfox("%s %s %x %zu bytes for peer", ifn->ifname,
+	if (verbose > 2)
+		logdebugx("%s %s %x %zu bytes for peer", ifn->ifname,
 		    p->name, p->scurr == NULL ? 0x0 : le32toh(p->scurr->id),
 		    msgsize);
 
@@ -2702,8 +2703,8 @@ sesshandletimeout(struct kevent *ev)
 		return;
 	}
 
-	if (verbose > 1)
-		loginfox("%s %s %x keepalive timer went off", ifn->ifname,
+	if (verbose > 2)
+		logdebugx("%s %s %x keepalive timer went off", ifn->ifname,
 		    peer->name, le32toh(sess->id));
 
 	sess->kaset = 0;
