@@ -1,3 +1,15 @@
+2020-04-07, Version 0.11.0
+
+* let wiresep-keygen(1) securely store keys in a file
+* change default file extension of private keys from .key to .privkey
+* fix initiator role on big-endian systems
+* fix a crash because of a memory misalignment on sparc64
+* fix premature exit with multiple configured interfaces
+* various improvements to the documentation
+* improve log messages seen with -v and -vv
+* lower tunnel mtu from 1420 to 1408 to work better with DSL
+
+
 2020-03-25, Version 0.10.1
 
 * upstream OpenBSD package patches that fix some build issues on base-gcc
