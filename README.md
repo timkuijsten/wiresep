@@ -89,7 +89,7 @@ The design documents can be found in the [doc](doc/) directory.
 
 ISC
 
-Copyright (c) 2018, 2019 Tim Kuijsten
+Copyright (c) 2018, 2019, 2020 Tim Kuijsten
 
 Permission to use, copy, modify, and distribute this software for any purpose
 with or without fee is hereby granted, provided that the above copyright notice
