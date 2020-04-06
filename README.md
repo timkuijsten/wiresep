@@ -37,7 +37,7 @@ simple example looks like the following:
 # and 172.16.0.1 and allows communication with the peer Jane and Joe. Jane is
 # allowed to use any source ip, while Joe may only use 2001:db8::4 or
 # 172.16.0.11/30 as the source ip of his packets. The private key for the tun0
-# interface can be generated with wiresep-keygen(8).
+# interface can be generated with `wiresep-keygen tun0`.
 
 interface tun0 {
 	ifaddr 2001:db8::7/126

@@ -71,25 +71,25 @@ The following default locations are used for keys if not configured otherwise.
 Only the private key for an interface is mandatory, all pre-shared keys are
 optional.
 .Pp
-.Pa /etc/wiresep/tunX.privkey
+.Pa /etc/wiresep/tunN.privkey
 default location of the private key used for an interface.
-.Ar tunX
+.Ar tunN
 must correspond to the name of a configured interface.
 .Pp
 .Pa /etc/wiresep/global.psk
 default location of a global pre-shared key
 .Pp
-.Pa /etc/wiresep/tunX.psk
+.Pa /etc/wiresep/tunN.psk
 default location of an interface specific pre-shared key
 .Pp
-.Pa /etc/wiresep/tunX.peer.psk
+.Pa /etc/wiresep/tunN.peer.psk
 default location of a peer specific pre-shared key
 .Pp
 Note that
-.Ar tunX
+.Ar tunN
 and
 .Ar peer
-should be substituted for the actual name of a configured  interface and peer.
+should be substituted for the actual name of a configured interface and peer.
 .Sh EXIT STATUS
 The
 .Nm

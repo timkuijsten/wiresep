@@ -45,9 +45,7 @@ must start with
 .Dq tun
 followed by a number.
 The named interface must exist in
-.Pa /dev
-and can be created with
-.Xr MAKEDEV 8 .
+.Pa /dev .
 See the section about interface specific settings for what can be contained in
 the block.
 .It Ic log facility Ar facility
@@ -104,9 +102,9 @@ It may be set multiple times.
 .It Ic privkeyfile Ar file
 The name of a file that contains the private key for this interface.
 If not set the default path of the private key is
-.Pa /etc/wiresep/tunX.privkey
+.Pa /etc/wiresep/tunN.privkey
 where
-.Ar tunX
+.Ar tunN
 is the name of the interface.
 A private key can be generated with
 .Xr wiresep-keygen 1 .
@@ -124,9 +122,9 @@ The name of a file that contains a pre-shared key for communication with all
 peers on this interface.
 The use of a pre-shared key is optional.
 If the file
-.Pa /etc/wiresep/tunX.psk
+.Pa /etc/wiresep/tunN.psk
 exists it is automatically used, where
-.Ar tunX
+.Ar tunN
 is the name of the interface.
 An interface specific pre-shared key overrides any global
 .Ar pskfile .
@@ -156,11 +154,11 @@ The name of a file that contains a pre-shared key for communication with this
 peer.
 The use of a pre-shared key is optional.
 If the file
-.Pa /etc/wiresep/tunX.peername.psk
+.Pa /etc/wiresep/tunN.peername.psk
 or
 .Pa /etc/wiresep/peername.psk
 exists it is automatically used, where
-.Ar tunX
+.Ar tunN
 is the name of the interface and
 .Ar peername
 is the
@@ -183,12 +181,11 @@ It uses the tun4 device with the internal ip addresses 2001:db8::7 and
 Jane is allowed to use any source ip, while Joe may only use 2001:db8::4 or
 172.16.0.11/30 as the source ip of his packets.
 The private key for the tun4 interface can be generated with
-.Xr wiresep-keygen 1 .
+.Ic wiresep-keygen tun4 .
 Furthermore, with Joe a peer specific pre-shared key is used for quantum-proof
-encryption by simply creating a pre-shared key with
-.Bd -literal -offset indent
-wiresep-keygen -s tun4 joe
-.Ed
+encryption by simply creating a pre-shared key using the
+.Ic wiresep-keygen -s tun4 Ic joe
+command.
 .Pp
 The content of
 .Pa /etc/wiresep/wiresep.conf

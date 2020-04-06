@@ -21,13 +21,13 @@
 .Sh SYNOPSIS
 .Nm
 .Op Fl o Ar dir
-.Ar tunX
+.Ar tunN
 .Nm
 .Op Fl o Ar dir
 .Fl s Cm global
 .Nm
 .Op Fl o Ar dir
-.Fl s Ar tunX Op Ar peer ...
+.Fl s Ar tunN Op Ar peer ...
 .Sh DESCRIPTION
 .Nm
 can generate the two different types of keys that are used by
@@ -47,9 +47,9 @@ By default the key is stored in
 unless overridden with
 .Fl o .
 The name of the file is
-.Pa tunX.privkey
+.Pa tunN.privkey
 where
-.Ar tunX
+.Ar tunN
 is the name of an interface, i.e. tun0.
 .Pp
 In the second synopsis a global pre-shared key is generated that can be used on
@@ -63,14 +63,14 @@ is used with a different
 .Pp
 In the third synopsis a pre-shared key is generated that is used for the
 specific
-.Ar tunX
+.Ar tunN
 only, or with the specified
 .Ar peer
 on
-.Ar tunX
+.Ar tunN
 only.
 By default the key for an interface is stored in
-.Pa /etc/wireguard/tunX.psk
+.Pa /etc/wireguard/tunN.psk
 unless
 .Fl o
 is used with a different
@@ -78,7 +78,7 @@ is used with a different
 If any
 .Ar peer
 is specified then the key is stored in
-.Pa /etc/wireguard/tunX.peer.psk
+.Pa /etc/wireguard/tunN.peer.psk
 and override any interface specific or global pre-shared keys.
 .Sh EXIT STATUS
 .Ex -std

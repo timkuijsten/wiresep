@@ -36,9 +36,9 @@
 void
 printusage(int d)
 {
-	dprintf(d, "usage: %s [-o path] tunX\n", getprogname());
+	dprintf(d, "usage: %s [-o path] tunN\n", getprogname());
 	dprintf(d, "       %s [-o path] -s global\n", getprogname());
-	dprintf(d, "       %s [-o path] -s tunX [peer ...]\n", getprogname());
+	dprintf(d, "       %s [-o path] -s tunN [peer ...]\n", getprogname());
 }
 
 /*
