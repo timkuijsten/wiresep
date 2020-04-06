@@ -1544,8 +1544,8 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 
 	if (sendwgdatamsg(sess->peer->sock, sess->peerid, sess->nextnonce, out,
 	    outsize) == -1) {
-		logwarnx("%s %s %x error sending data", ifn->ifname,
-		    sess->peer->name, le32toh(sess->id));
+		logwarnx("%s %s %x error sending %zu bytes", ifn->ifname,
+		    sess->peer->name, le32toh(sess->id), outsize);
 		return -1;
 	}
 
@@ -1569,9 +1569,8 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 		sess->expack = now + KEEPALIVE_TIMEOUT + REKEY_TIMEOUT;
 
 	if (verbose > 1)
-		loginfox("%s %s %x %zu bytes (%zu padded) sent to peer",
-		    ifn->ifname, sess->peer->name, le32toh(sess->id), padlen,
-		    outsize);
+		loginfox("%s %s %x %zu authenticated bytes sent to peer",
+		    ifn->ifname, sess->peer->name, le32toh(sess->id), outsize);
 
 	/*
 	 * Handle session limits.
@@ -2223,7 +2222,7 @@ handletundmsg(void)
 	msgsize = rc;
 
 	stats.devin++;
-	stats.devinsz += msgsize;
+	stats.devinsz += msgsize - TUNHDRSIZ;
 
 	/* expect at least a tunnel and ip header */
 	if (rc < TUNHDRSIZ + MINIPHDR) {
@@ -2273,8 +2272,9 @@ handletundmsg(void)
 		break;
 	default:
 		if (verbose > -1)
-			logwarnx("%s invalid message from device %d %zu",
-			    ifn->ifname, ntohl(*(uint32_t *)msg), msgsize);
+			logwarnx("%s invalid message from device %d %zu bytes",
+			    ifn->ifname, ntohl(*(uint32_t *)msg),
+			    msgsize - TUNHDRSIZ);
 		stats.devinerr++;
 		return -1;
 	}
@@ -2282,7 +2282,7 @@ handletundmsg(void)
 	if (p == NULL) {
 		if (verbose > -1)
 			logwarnx("%s %zu bytes for unknown peer", ifn->ifname,
-			    msgsize);
+			    msgsize - TUNHDRSIZ);
 		stats.devinerr++;
 		return -1;
 	}
@@ -2290,7 +2290,7 @@ handletundmsg(void)
 	if (verbose > 2)
 		logdebugx("%s %s %x %zu bytes for peer", ifn->ifname,
 		    p->name, p->scurr == NULL ? 0x0 : le32toh(p->scurr->id),
-		    msgsize);
+		    msgsize - TUNHDRSIZ);
 
 	if (p->sock == -1) {
 		errno = EDESTADDRREQ;
