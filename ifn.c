@@ -62,7 +62,7 @@
 #define MINIPHDR 20
 #define MAXIPHDR 40	/* ip6 header without options */
 #define TUNHDRSIZ 4
-#define wsTUNMTU 1420
+#define WSTUNMTU 1408
 #define TAGLEN 16
 #define DATAHEADERLEN 16
 
@@ -1535,6 +1535,8 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 		padlen = outsize;
 	}
 
+	/* TODO cap padding to at most the MTU size */
+
 	*(uint64_t *)&nonce[8] = htole64(sess->nextnonce);
 	if (EVP_AEAD_CTX_seal(&sess->sendctx, out, &outsize, outsize, &nonce[4],
 	    (sizeof nonce) - 4, in, padlen, NULL, 0) == 0) {
@@ -2893,7 +2895,7 @@ opentunnel(const char *ifname, const char *ifdesc, int setflags)
 			return -1;
 
 		tuninfo.flags &= ~IFF_POINTOPOINT;
-		tuninfo.mtu = wsTUNMTU;
+		tuninfo.mtu = WSTUNMTU;
 
 		if (ioctl(tund, TUNSIFINFO, &tuninfo) == -1)
 			return -1;
