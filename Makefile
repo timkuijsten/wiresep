@@ -115,6 +115,36 @@ tags: *.[ch]
 	find . -name '*.[chy]' | xargs ctags -d
 	cd test && find . -name '*.[chy]' | xargs ctags -d
 
+release: dotpng y.tab.c
+	git archive \
+	    --prefix=wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}/ \
+	    -o wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.tar \
+	    v${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}
+	# reset access and modification times of extra files in the archive
+	touch -d $$(git log -1 --format=%cI \
+	    v${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH} | cut -d+ -f1) \
+	    *.png y.tab.c
+	# include these files in the archive
+	tar -r \
+	    -s '/^/wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}\/doc\//' \
+	    -f wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.tar \
+	    *.png
+	tar -r \
+	    -s '/^/wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}\//' \
+	    -f wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.tar \
+	    y.tab.c
+	# reset access and modification times on the archive itself
+	touch -r y.tab.c \
+	    wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.tar
+	gzip wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.tar
+	cksum -ba sha256 \
+	    wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.tar.gz | \
+	    tee \
+	    wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.tar.gz.SHA256
+	touch -r \
+	    wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.tar.gz \
+	    wiresep-${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}.tar.gz.SHA256
+
 install: wiresep wiresep-keygen
 	mkdir -p $(DESTDIR)$(ETCDIR)/wiresep
 	mkdir -p $(DESTDIR)$(BINDIR)
