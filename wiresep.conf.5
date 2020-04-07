@@ -176,22 +176,22 @@ This setting is required.
 .Sh EXAMPLES
 What follows is an example of a configuration of a server that is listening on
 the public ip 198.51.100.7 port 1022.
-It uses the tun4 device with the internal ip addresses 2001:db8::7 and
+It uses the tun0 device with the internal ip addresses 2001:db8::7 and
 172.16.0.1 and allows communication with the peer Jane and Joe.
 Jane is allowed to use any source ip, while Joe may only use 2001:db8::4 or
 172.16.0.11/30 as the source ip of his packets.
-The private key for the tun4 interface can be generated with
-.Ic wiresep-keygen tun4 .
+The private key for the tun0 interface can be generated with
+.Ic wiresep-keygen tun0 .
 Furthermore, with Joe a peer specific pre-shared key is used for quantum-proof
 encryption by simply creating a pre-shared key using the
-.Ic wiresep-keygen -s tun4 Ic joe
+.Ic wiresep-keygen -s tun0 Ic joe
 command.
 .Pp
 The content of
 .Pa /etc/wiresep/wiresep.conf
 looks as follows:
 .Bd -literal -offset indent
-interface tun4 {
+interface tun0 {
 	ifaddr 2001:db8::7/126
 	ifaddr 172.16.0.1/24
 
@@ -211,7 +211,7 @@ interface tun4 {
 .Ed
 .Pp
 Note that
-.Pa /etc/hostname.tun4
+.Pa /etc/hostname.tun0
 should not be created as
 .Xr wiresep 8
 should do the setup and teardown of the interface by itself.
