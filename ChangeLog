@@ -1,3 +1,13 @@
+2020-04-07, Version 0.11.1
+
+* move away from GitHub to our own controlled domain, the new website can be
+  found at https://netsend.nl/wiresep and the repository can be cloned at
+  https://netsend.nl/wiresep.git
+* support stable releases and distribute them through
+  https://netsend.nl/wiresep/archive
+* minor nitpicks
+
+
 2020-04-07, Version 0.11.0
 
 * let wiresep-keygen(1) securely store keys in a file
