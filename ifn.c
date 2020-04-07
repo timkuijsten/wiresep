@@ -1570,9 +1570,14 @@ encryptandsend(void *out, size_t outsize, const void *in, size_t insize,
 	if (insize > 0 && sess->expack == 0)
 		sess->expack = now + KEEPALIVE_TIMEOUT + REKEY_TIMEOUT;
 
+	/*
+	 * Log the size of the packet with padding, don't include the WireGuard
+	 * transport data message header or authentication tag which are 16
+	 * bytes each.
+	 */
 	if (verbose > 1)
-		loginfox("%s %s %x %zu authenticated bytes sent to peer",
-		    ifn->ifname, sess->peer->name, le32toh(sess->id), outsize);
+		loginfox("%s %s %x %zu bytes sent to peer",
+		    ifn->ifname, sess->peer->name, le32toh(sess->id), padlen);
 
 	/*
 	 * Handle session limits.
