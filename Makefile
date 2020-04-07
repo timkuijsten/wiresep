@@ -109,22 +109,11 @@ testproxy: tai64n.o blake2s-ref.o wireprot.o wiresep.o util.o scfg.o base64.o \
 	    util.o base64.o scfg.o parseconfig.o test/testproxy.c -o $@ -lcrypto
 
 clean:
-	rm -f y.tab.c *.o *.core *.html wiresep wiresep-keygen testproxy
+	rm -f y.tab.c *.o *.core wiresep wiresep-keygen testproxy
 
 tags: *.[ch]
 	find . -name '*.[chy]' | xargs ctags -d
 	cd test && find . -name '*.[chy]' | xargs ctags -d
-
-wiresep-keygen.1.html:  wiresep-keygen.1
-	mandoc -T html -O style=man.css wiresep-keygen.1 > wiresep-keygen.1.html
-
-wiresep.conf.5.html:  wiresep.conf.5
-	mandoc -T html -O style=man.css wiresep.conf.5 > wiresep.conf.5.html
-
-wiresep.8.html:  wiresep.8
-	mandoc -T html -O style=man.css wiresep.8 > wiresep.8.html
-
-manhtml: wiresep.8.html wiresep-keygen.1.html wiresep.conf.5.html
 
 install: wiresep wiresep-keygen
 	mkdir -p $(DESTDIR)$(ETCDIR)/wiresep
